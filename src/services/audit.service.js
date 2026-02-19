@@ -64,6 +64,46 @@ export const saveInventoryFile = async (auditId, filename) => {
   return result.rows[0];
 };
 
+export const insertInventoryRows = async (auditId, rows) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    for (const r of rows) {
+      await client.query(
+        `INSERT INTO inventory_rows
+        (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
+         primary_bin, primary_paid, secondary_bin, secondary_paid, brand)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          auditId,
+          r.ndc,
+          r.rx_number,
+          r.status,
+          r.date_filled,
+          r.drug_name,
+          r.quantity,
+          r.package_size,
+          r.primary_bin,
+          r.primary_paid,
+          r.secondary_bin,
+          r.secondary_paid,
+          r.brand,
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+    return { inserted: rows.length };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 export const saveWholesalerFiles = async (auditId, filesArray) => {
   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
     auditId,

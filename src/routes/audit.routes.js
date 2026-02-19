@@ -7,6 +7,7 @@ import {
 import { uploadInventory } from "../utils/multer.js";
 import { uploadWholesalers } from "../utils/multer.js";
 import { uploadWholesalerFiles } from "../controllers/audit.controller.js";
+import { createInventoryRows } from "../controllers/audit.controller.js";
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ router.post(
   uploadInventory.single("file"),
   uploadInventoryFile,
 );
+router.post("/:id/inventory/rows", createInventoryRows);
 router.post("/:id/wholesalers", uploadWholesalers.any(), uploadWholesalerFiles);
 
 export default router;

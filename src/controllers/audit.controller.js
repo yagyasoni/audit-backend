@@ -79,6 +79,27 @@ export const uploadInventoryFile = async (req, res) => {
   }
 };
 
+export const createInventoryRows = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = req.body;
+
+    if (!rows || !Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "rows array required" });
+    }
+
+    const result = await auditService.insertInventoryRows(id, rows);
+
+    res.status(201).json({
+      message: "Inventory rows inserted successfully",
+      ...result,
+    });
+  } catch (err) {
+    console.error("Insert Inventory Rows Error:", err);
+    res.status(500).json({ error: "Failed to insert inventory rows" });
+  }
+};
+
 export const uploadWholesalerFiles = async (req, res) => {
   try {
     const { id } = req.params;
