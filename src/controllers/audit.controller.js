@@ -137,3 +137,58 @@ export const uploadWholesalerFiles = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// --- NEW ---
+
+export const getAudits = async (req, res) => {
+  try {
+    const audits = await auditService.getAudits();
+    res.json(audits);
+  } catch (error) {
+    console.error("Get Audits Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getAuditById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const audit = await auditService.getAuditById(id);
+
+    if (!audit) {
+      return res.status(404).json({ error: "Audit not found" });
+    }
+
+    res.json(audit);
+  } catch (error) {
+    console.error("Get Audit By Id Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getInventoryRows = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await auditService.getInventoryRows(id);
+    res.json(rows);
+  } catch (error) {
+    console.error("Get Inventory Rows Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const deleteAudit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await auditService.deleteAudit(id);
+
+    if (!deleted) {
+      return res.status(404).json({ error: "Audit not found" });
+    }
+
+    res.json({ message: "Audit deleted successfully", audit: deleted });
+  } catch (error) {
+    console.error("Delete Audit Error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};

@@ -1,4 +1,7 @@
 import { pool } from "../config/db.js";
+import fs from "fs";
+import path from "path";
+import { parse } from "csv-parse/sync";
 
 export const createAudit = async (name) => {
   const result = await pool.query(
@@ -60,6 +63,19 @@ export const saveInventoryFile = async (auditId, filename) => {
     `,
     [auditId, filename],
   );
+
+  // Auto-parse CSV and insert inventory rows
+  const filePath = path.join(process.cwd(), "uploads/inventory", filename);
+  const fileContent = fs.readFileSync(filePath, "utf-8");
+  const records = parse(fileContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+  });
+
+  if (records.length > 0) {
+    await insertInventoryRows(auditId, records);
+  }
 
   return result.rows[0];
 };
@@ -141,4 +157,36 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
   );
 
   return update.rows[0];
+};
+
+// --- NEW ---
+
+export const getAudits = async () => {
+  const result = await pool.query(
+    `SELECT * FROM audits ORDER BY created_at DESC`,
+  );
+  return result.rows;
+};
+
+export const getAuditById = async (auditId) => {
+  const result = await pool.query(`SELECT * FROM audits WHERE id = $1`, [
+    auditId,
+  ]);
+  return result.rows[0] || null;
+};
+
+export const getInventoryRows = async (auditId) => {
+  const result = await pool.query(
+    `SELECT * FROM inventory_rows WHERE audit_id = $1 ORDER BY id ASC`,
+    [auditId],
+  );
+  return result.rows;
+};
+
+export const deleteAudit = async (auditId) => {
+  const result = await pool.query(
+    `DELETE FROM audits WHERE id = $1 RETURNING *`,
+    [auditId],
+  );
+  return result.rows[0] || null;
 };
