@@ -18,5 +18,8 @@ router.post(
   uploadInventoryFile,
 );
 router.post("/:id/wholesalers", uploadWholesalers.any(), uploadWholesalerFiles);
+// router.get("/audits", getAllAudits);
+
 
 export default router;
+

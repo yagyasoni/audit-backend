@@ -64,6 +64,13 @@ export const saveInventoryFile = async (auditId, filename) => {
   return result.rows[0];
 };
 
+export const getAllAudits = async () => {
+  const result = await pool.query(
+    `SELECT * FROM audits ORDER BY created_at DESC`
+  );
+  return result.rows;
+};
+
 export const saveWholesalerFiles = async (auditId, filesArray) => {
   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
     auditId,

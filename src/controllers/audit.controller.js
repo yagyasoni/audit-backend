@@ -1,5 +1,5 @@
 import * as auditService from "../services/audit.service.js";
-
+// import { createAudit, updateAuditDates, saveInventoryFile, saveWholesalerFiles } from "../services/audit.service.js";
 export const createAudit = async (req, res) => {
   try {
     const { name } = req.body;
@@ -59,23 +59,25 @@ export const updateAuditDates = async (req, res) => {
 export const uploadInventoryFile = async (req, res) => {
   try {
     const { id } = req.params;
+    const file = req.file;
+    const headerMapping = req.body.headerMapping
+      ? JSON.parse(req.body.headerMapping)
+      : {};
 
-    if (!req.file) {
-      return res.status(400).json({ error: "File is required" });
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const fileRecord = await auditService.saveInventoryFile(
-      id,
-      req.file.filename,
-    );
+    const saved = await auditService.saveInventoryFile(id, file.filename);
 
-    res.status(201).json({
-      message: "Inventory uploaded successfully",
-      file: fileRecord,
+    return res.status(200).json({
+      message: "Inventory file uploaded successfully",
+      file: saved,
+      headerMapping,
     });
-  } catch (error) {
-    console.error("Upload Inventory Error:", error);
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error("Upload error:", err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
