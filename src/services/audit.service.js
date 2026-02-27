@@ -1,4 +1,7 @@
 import { pool } from "../config/db.js";
+import fs from "fs";
+import path from "path";
+import { parse } from "csv-parse/sync";
 
 export const createAudit = async (name) => {
   const result = await pool.query(
@@ -61,14 +64,68 @@ export const saveInventoryFile = async (auditId, filename) => {
     [auditId, filename],
   );
 
+  // Auto-parse CSV and insert inventory rows
+  const filePath = path.join(process.cwd(), "uploads/inventory", filename);
+  const fileContent = fs.readFileSync(filePath, "utf-8");
+  const records = parse(fileContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+  });
+
+  if (records.length > 0) {
+    await insertInventoryRows(auditId, records);
+  }
+
   return result.rows[0];
 };
 
+<<<<<<< HEAD
 export const getAllAudits = async () => {
   const result = await pool.query(
     `SELECT * FROM audits ORDER BY created_at DESC`
   );
   return result.rows;
+=======
+export const insertInventoryRows = async (auditId, rows) => {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    for (const r of rows) {
+      await client.query(
+        `INSERT INTO inventory_rows
+        (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
+         primary_bin, primary_paid, secondary_bin, secondary_paid, brand)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          auditId,
+          r.ndc,
+          r.rx_number,
+          r.status,
+          r.date_filled,
+          r.drug_name,
+          r.quantity,
+          r.package_size,
+          r.primary_bin,
+          r.primary_paid,
+          r.secondary_bin,
+          r.secondary_paid,
+          r.brand,
+        ],
+      );
+    }
+
+    await client.query("COMMIT");
+    return { inserted: rows.length };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+>>>>>>> 3c2a7fdc9feaa68f3aac11421af87dfa891de350
 };
 
 export const saveWholesalerFiles = async (auditId, filesArray) => {
@@ -108,4 +165,36 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
   );
 
   return update.rows[0];
+};
+
+// --- NEW ---
+
+export const getAudits = async () => {
+  const result = await pool.query(
+    `SELECT * FROM audits ORDER BY created_at DESC`,
+  );
+  return result.rows;
+};
+
+export const getAuditById = async (auditId) => {
+  const result = await pool.query(`SELECT * FROM audits WHERE id = $1`, [
+    auditId,
+  ]);
+  return result.rows[0] || null;
+};
+
+export const getInventoryRows = async (auditId) => {
+  const result = await pool.query(
+    `SELECT * FROM inventory_rows WHERE audit_id = $1 ORDER BY id ASC`,
+    [auditId],
+  );
+  return result.rows;
+};
+
+export const deleteAudit = async (auditId) => {
+  const result = await pool.query(
+    `DELETE FROM audits WHERE id = $1 RETURNING *`,
+    [auditId],
+  );
+  return result.rows[0] || null;
 };

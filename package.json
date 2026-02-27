@@ -14,7 +14,11 @@
   "type": "module",
   "dependencies": {
     "cors": "^2.8.6",
+<<<<<<< HEAD
     "csv-parser": "^3.2.0",
+=======
+    "csv-parse": "^6.1.0",
+>>>>>>> 3c2a7fdc9feaa68f3aac11421af87dfa891de350
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "fast-csv": "^5.0.5",
