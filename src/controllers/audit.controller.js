@@ -1,4 +1,5 @@
 import * as auditService from "../services/audit.service.js";
+import { pool } from "../config/db.js";
 // import { createAudit, updateAuditDates, saveInventoryFile, saveWholesalerFiles } from "../services/audit.service.js";
 export const createAudit = async (req, res) => {
   try {
@@ -16,6 +17,44 @@ export const createAudit = async (req, res) => {
   } catch (error) {
     console.error("Create Audit Error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getFullReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // DEBUG - check if rows exist at all
+    const countCheck = await pool.query(
+      `SELECT COUNT(*) FROM inventory_rows WHERE audit_id = $1`,
+      [id]
+    );
+    console.log("ROW COUNT FOR AUDIT:", id, countCheck.rows[0]);
+
+    const result = await pool.query(
+  `
+  SELECT
+    ndc,
+    MAX(drug_name) AS drug_name,
+    MAX(package_size) AS package_size,
+    COUNT(*) AS total_ordered,
+    SUM(quantity) AS total_billed,
+    SUM(primary_paid) AS total_paid,
+    SUM(COALESCE(primary_paid, 0) + COALESCE(secondary_paid, 0)) AS total_amount,
+    COUNT(*) - SUM(quantity) AS total_shortage
+  FROM inventory_rows
+  WHERE audit_id = $1
+  GROUP BY ndc
+  ORDER BY ndc
+  `,
+  [id]
+);
+
+    console.log("REPORT ROWS:", result.rows.length);
+    return res.json(result.rows);
+  } catch (error) {
+    console.error("Report aggregation error:", error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -68,7 +107,11 @@ export const uploadInventoryFile = async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const saved = await auditService.saveInventoryFile(id, file.filename);
+    const saved = await auditService.saveInventoryFile(
+  id,
+  file.filename,
+  headerMapping
+);
 
     return res.status(200).json({
       message: "Inventory file uploaded successfully",
@@ -77,7 +120,13 @@ export const uploadInventoryFile = async (req, res) => {
     });
   } catch (err) {
     console.error("Upload error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("UPLOAD INVENTORY ERROR:", err);
+
+return res.status(500).json({
+  error: err.message,
+  stack: err.stack,
+  details: err?.cause || null,
+});
   }
 };
 

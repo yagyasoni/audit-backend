@@ -23,7 +23,7 @@ const storage = multer.diskStorage({
 
 // only csv allowed
 const fileFilter = (req, file, cb) => {
-  const allowed = [".csv", ".xlsx", ".xls"];
+  const allowed = [".csv"];
   if (!allowed.includes(path.extname(file.originalname).toLowerCase())) {
     return cb(new Error("Only CSV, XLSX, XLS files allowed"));
   }
