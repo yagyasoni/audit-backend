@@ -34,50 +34,52 @@ export const getFullReport = async (req, res) => {
     const result = await pool.query(
   `
   SELECT
-    i.ndc,
-    MAX(i.drug_name) AS drug_name,
-    MAX(i.package_size) AS package_size,
-    COALESCE(w.total_ordered, 0) AS total_ordered,
-    SUM(i.quantity) AS total_billed,
-    SUM(COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)) AS total_amount,
-    COALESCE(w.total_cost, 0) AS cost,
-    COALESCE(w.total_ordered, 0) - SUM(i.quantity) AS total_shortage,
+  i.ndc,
+  MAX(REGEXP_REPLACE(i.drug_name, '\s*\(\d{5}-\d{4}-\d{2}\).*$', '')) AS drug_name,
+  MAX(i.package_size) AS package_size,
+  COALESCE(w.total_ordered, 0) AS total_ordered,
+  SUM(i.quantity) AS total_billed,
+  SUM(COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)) AS total_amount,
+  COALESCE(w.total_cost, 0) AS cost,
+  COALESCE(w.total_ordered, 0) - SUM(i.quantity) AS total_shortage,
 
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'HORIZON' THEN i.quantity ELSE 0 END), 0) AS horizon,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'EXPRESS SCRIPTS' THEN i.quantity ELSE 0 END), 0) AS express,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'CAREMARK' THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) IN ('OPTUM','OPTUMRX') THEN i.quantity ELSE 0 END), 0) AS optumrx,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'HUMANA' THEN i.quantity ELSE 0 END), 0) AS humana,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'CARELONRX' THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) ILIKE '%SOUTHERN SCRIPTS%' THEN i.quantity ELSE 0 END), 0) AS ssc,
-    COALESCE(SUM(CASE WHEN COALESCE(m3.pbm_name, m2.pbm_name) = 'MEDIMPACT' THEN i.quantity ELSE 0 END), 0) AS pdmi
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'horizon' THEN i.quantity ELSE 0 END), 0) AS horizon,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'express scripts' THEN i.quantity ELSE 0 END), 0) AS express,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'caremark' THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('optum','optumrx') THEN i.quantity ELSE 0 END), 0) AS optumrx,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'humana' THEN i.quantity ELSE 0 END), 0) AS humana,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'carelonrx' THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) ILIKE '%southern scripts%' OR LOWER(pbm.pbm_name) ILIKE '%liviniti%' THEN i.quantity ELSE 0 END), 0) AS ssc,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('medimpact','medimpact') THEN i.quantity ELSE 0 END), 0) AS pdmi
 
-  FROM inventory_rows i
+FROM inventory_rows i
 
-  LEFT JOIN LATERAL (
-    SELECT pbm_name FROM master_sheet m
-    WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-      AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-      AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
-    LIMIT 1
-  ) m3 ON true
+-- ✅ SINGLE lateral with 3-level COALESCE fallback (fixes the 2x duplication)
+LEFT JOIN LATERAL (
+  SELECT COALESCE(
+    (SELECT pbm_name FROM master_sheet m
+     WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
+       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+       AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
+     LIMIT 1),
+    (SELECT pbm_name FROM master_sheet m
+     WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
+       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+     LIMIT 1),
+    (SELECT pbm_name FROM master_sheet m
+     WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
+     LIMIT 1)
+  ) AS pbm_name
+) pbm ON true
 
-  LEFT JOIN LATERAL (
-    SELECT pbm_name FROM master_sheet m
-    WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-      AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-      AND m3.pbm_name IS NULL
-    LIMIT 1
-  ) m2 ON true
+LEFT JOIN (
+  SELECT ndc, SUM(quantity) AS total_ordered, SUM(COALESCE(total_cost,0)) AS total_cost
+  FROM wholesaler_rows WHERE audit_id = $1 GROUP BY ndc
+) w ON w.ndc = i.ndc
 
-  LEFT JOIN (
-    SELECT ndc, SUM(quantity) AS total_ordered, SUM(COALESCE(total_cost,0)) AS total_cost
-    FROM wholesaler_rows WHERE audit_id = $1 GROUP BY ndc
-  ) w ON w.ndc = i.ndc
-
-  WHERE i.audit_id = $1
-  GROUP BY i.ndc, w.total_ordered, w.total_cost
-  ORDER BY i.ndc
+WHERE i.audit_id = $1
+GROUP BY i.ndc, w.total_ordered, w.total_cost
+ORDER BY SUM(i.quantity) DESC
   `,
   [id]
 );
