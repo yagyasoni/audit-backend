@@ -64,6 +64,7 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
+  phone TEXT,
   password TEXT,
   role TEXT DEFAULT 'user',
   is_verified BOOLEAN DEFAULT false,
@@ -96,4 +97,42 @@ CREATE TABLE password_resets (
   email TEXT NOT NULL,
   token TEXT NOT NULL,
   expires_at TIMESTAMP NOT NULL
+);
+
+
+CREATE TABLE pharmacy_details (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+    pharmacy_name TEXT NOT NULL,
+    address TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    fax TEXT,
+
+    ncpdp_number TEXT,
+    npi_number TEXT,
+
+    pharmacy_license_number TEXT,
+    license_expiry_date DATE,
+    license_file BYTEA,
+
+    dea_number TEXT,
+    dea_expiry_date DATE,
+    dea_file BYTEA,
+
+    cds_number TEXT,
+    cds_expiry DATE,
+    cds_file BYTEA,
+
+    pharmacist_name TEXT,
+    pharmacist_license_number TEXT,
+    pharmacist_expiration DATE,
+    pharmacist_file BYTEA,
+
+    cmea_expiry DATE,
+    cmea_file BYTEA,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );

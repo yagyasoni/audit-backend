@@ -6,47 +6,67 @@ import generateOTP from "../utils/otp.js";
 import { Resend } from "resend";
 import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
+import multer from "multer";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const storage = multer.memoryStorage();
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
 router.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
+  try {
+    const { name, email, phone, password } = req.body;
 
-  const existing = await pool.query("SELECT * FROM users WHERE email=$1", [
-    email,
-  ]);
+    const existing = await pool.query("SELECT 1 FROM users WHERE email=$1", [
+      email,
+    ]);
 
-  if (existing.rows.length > 0) {
-    return res.status(409).json({ message: "User already exists" });
+    if (existing.rowCount > 0) {
+      return res.status(409).json({ message: "User already exists" });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+
+    // INSERT + RETURNING (safe way)
+    const userResult = await pool.query(
+      `INSERT INTO users (name,email,phone,password)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id,name,email,phone,created_at`,
+      [name, email, phone, hash],
+    );
+
+    const user = userResult.rows[0];
+
+    const otp = generateOTP();
+
+    await pool.query(
+      `INSERT INTO email_otps (email,otp,expires_at)
+       VALUES ($1,$2,NOW() + INTERVAL '5 minutes')`,
+      [email, otp],
+    );
+
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: "Verify your account",
+      html: `<p>Your OTP is <b>${otp}</b></p>`,
+    });
+
+    res.status(200).json({
+      message: "OTP sent to email",
+      user: user,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
-
-  const hash = await bcrypt.hash(password, 10);
-
-  await pool.query(
-    `INSERT INTO users (name,email,password)
-     VALUES ($1,$2,$3)`,
-    [name, email, hash],
-  );
-
-  const otp = generateOTP();
-
-  await pool.query(
-    `INSERT INTO email_otps (email,otp,expires_at)
-     VALUES ($1,$2,NOW() + INTERVAL '5 minutes')`,
-    [email, otp],
-  );
-
-  await resend.emails.send({
-    from: process.env.EMAIL_FROM,
-    to: email,
-    subject: "Verify your account",
-    html: `<p>Your OTP is <b>${otp}</b></p>`,
-  });
-
-  res.status(200).json({ message: "OTP sent to email" });
 });
 
 router.post("/verify-otp", async (req, res) => {
@@ -247,7 +267,7 @@ router.get("/user-info", async (req, res) => {
     const userId = decoded.userId;
 
     const result = await pool.query(
-      `SELECT id, name, email, role, is_verified
+      `SELECT id, name, email, phone, role, is_verified
        FROM users
        WHERE id=$1`,
       [userId],
@@ -360,6 +380,179 @@ router.post("/reset-password", async (req, res) => {
     res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post(
+  "/pharmacy",
+  upload.fields([
+    { name: "licenseFile", maxCount: 1 },
+    { name: "deaFile", maxCount: 1 },
+    { name: "cdsFile", maxCount: 1 },
+    { name: "pharmacistFile", maxCount: 1 },
+    { name: "cmeaFile", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const {
+        userId,
+        pharmacyName,
+        address,
+        phone,
+        fax,
+        ncpdpNumber,
+        npiNumber,
+        pharmacyLicenseNumber,
+        licenseExpiryDate,
+        deaNumber,
+        deaExpiryDate,
+        cdsNumber,
+        cdsExpiry,
+        pharmacistName,
+        pharmacistLicenseNumber,
+        pharmacistExpiration,
+        cmeaExpiry,
+      } = req.body;
+
+      const licenseFile = req.files?.licenseFile?.[0]?.buffer || null;
+      const deaFile = req.files?.deaFile?.[0]?.buffer || null;
+      const cdsFile = req.files?.cdsFile?.[0]?.buffer || null;
+      const pharmacistFile = req.files?.pharmacistFile?.[0]?.buffer || null;
+      const cmeaFile = req.files?.cmeaFile?.[0]?.buffer || null;
+
+      const result = await pool.query(
+        `INSERT INTO pharmacy_details (
+          user_id,
+          pharmacy_name,
+          address,
+          phone,
+          fax,
+          ncpdp_number,
+          npi_number,
+          pharmacy_license_number,
+          license_expiry_date,
+          license_file,
+          dea_number,
+          dea_expiry_date,
+          dea_file,
+          cds_number,
+          cds_expiry,
+          cds_file,
+          pharmacist_name,
+          pharmacist_license_number,
+          pharmacist_expiration,
+          pharmacist_file,
+          cmea_expiry,
+          cmea_file
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
+        )
+        RETURNING *`,
+        [
+          userId,
+          pharmacyName,
+          address,
+          phone,
+          fax,
+          ncpdpNumber,
+          npiNumber,
+          pharmacyLicenseNumber,
+          licenseExpiryDate,
+          licenseFile,
+          deaNumber,
+          deaExpiryDate,
+          deaFile,
+          cdsNumber,
+          cdsExpiry,
+          cdsFile,
+          pharmacistName,
+          pharmacistLicenseNumber,
+          pharmacistExpiration,
+          pharmacistFile,
+          cmeaExpiry,
+          cmeaFile,
+        ],
+      );
+
+      res.status(200).json({
+        message: "Pharmacy details saved successfully",
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({
+        message: "Server error",
+      });
+    }
+  },
+);
+
+router.get("/pharmacy-details", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({ message: "Authorization header missing" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({ message: "Token missing" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const userId = decoded.userId;
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        user_id,
+        pharmacy_name,
+        address,
+        phone,
+        fax,
+        ncpdp_number,
+        npi_number,
+        pharmacy_license_number,
+        license_expiry_date,
+        dea_number,
+        dea_expiry_date,
+        cds_number,
+        cds_expiry,
+        pharmacist_name,
+        pharmacist_license_number,
+        pharmacist_expiration,
+        cmea_expiry
+       FROM pharmacy_details
+       WHERE user_id=$1`,
+      [userId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: "Pharmacy details not found",
+      });
+    }
+
+    res.status(200).json({
+      pharmacy: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired" });
+    }
+
     res.status(500).json({ message: "Server error" });
   }
 });
