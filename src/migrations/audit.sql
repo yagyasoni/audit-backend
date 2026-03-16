@@ -20,7 +20,6 @@ CREATE TABLE audit_inventory_files (
     uploaded_at TIMESTAMP DEFAULT NOW()
 );
 
-
 CREATE TABLE IF NOT EXISTS inventory_rows (
     id BIGSERIAL PRIMARY KEY,
     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
@@ -41,25 +40,42 @@ CREATE TABLE IF NOT EXISTS inventory_rows (
     brand TEXT
 );
 
+-- CREATE TABLE audit_wholesaler_files (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
+--     wholesaler_files JSONB NOT NULL DEFAULT '[]',
+--     uploaded_at TIMESTAMP DEFAULT NOW()
+-- );
 
-CREATE TABLE audit_wholesaler_files (
+
+CREATE TABLE wholesaler_files (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
-    wholesaler_files JSONB NOT NULL DEFAULT '[]',
+
+    wholesaler_name TEXT,
+    file_name TEXT,
+
     uploaded_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS wholesaler_rows (
     id BIGSERIAL PRIMARY KEY,
-    audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
 
+    audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
+    wholesaler_file_id UUID REFERENCES wholesaler_files(id) ON DELETE CASCADE,
+
+    
     ndc TEXT,
-    invoice_date DATE,
     product_name TEXT,
     quantity INTEGER,
-    unit_price INTEGER,
-    total_price INTEGER,
 
+    unit_cost NUMERIC,
+    total_cost NUMERIC,
+
+    invoice_date DATE,
+
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE users (
@@ -99,6 +115,24 @@ CREATE TABLE password_resets (
   email TEXT NOT NULL,
   token TEXT NOT NULL,
   expires_at TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wholesaler_rows (
+    id BIGSERIAL PRIMARY KEY,
+
+    audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
+    wholesaler_file_id UUID REFERENCES wholesaler_files(id) ON DELETE CASCADE,
+
+    
+    ndc TEXT,
+    product_name TEXT,
+    quantity INTEGER,
+
+    unit_cost NUMERIC,
+    total_cost NUMERIC,
+
+    invoice_date DATE,
+
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 

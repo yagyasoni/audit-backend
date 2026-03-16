@@ -52,6 +52,14 @@ const wholesalerStorage = multer.diskStorage({
   },
 });
 
+const wholesalerFileFilter = (req, file, cb) => {
+  if (path.extname(file.originalname).toLowerCase() !== ".csv") {
+    return cb(new Error("Only CSV files allowed"));
+  }
+  cb(null, true);
+};
+
 export const uploadWholesalers = multer({
   storage: wholesalerStorage,
+  fileFilter: wholesalerFileFilter,
 });

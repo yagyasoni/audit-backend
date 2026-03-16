@@ -1,0 +1,2463 @@
+BIN,PCN,GROUP,PBM Name(HORIZON / CAREMARK / EXPRESS SCRIPTS / HUMANA / OPTUM / DREXI / EMPIRX / LIVINTI(SOUTHERN SCRIPTS) / COUPON) ,Payer Type(Medicare / Medicaid / Commercial / Coupon)
+3585,91200,ARX01860,Medimpact,Commercial
+3858,A4,2CUA,Express Scripts,Commercial
+3858,A4,2DSA,Express Scripts,Commercial
+3858,A4,2GDA,Express Scripts,Commercial
+3858,A4,2GKA,Express Scripts,Commercial
+3858,A4,AMAZON1,Express Scripts,Commercial
+3858,A4,APNA,Express Scripts,Commercial
+3858,A4,BOBSDIS,Express Scripts,Commercial
+3858,A4,ECPRX4U,Express Scripts,Commercial
+3858,A4,FDNA,Express Scripts,Commercial
+3858,A4,GH3A,Express Scripts,Commercial
+3858,A4,h5la,Express Scripts,Commercial
+3858,A4,H5LA,Express Scripts,Commercial
+3858,A4,HIGA,Express Scripts,Commercial
+3858,A4,IMPERBP,Express Scripts,Commercial
+3858,A4,IWLOC11,Express Scripts,Commercial
+3858,A4,JNAA,Express Scripts,Commercial
+3858,A4,JUTA,Express Scripts,Commercial
+3858,A4,jxs000016306128,Express Scripts,Commercial
+3858,A4,K8CA,Express Scripts,Commercial
+3858,A4,L4SA,Express Scripts,Commercial
+3858,A4,MATFIRM,Express Scripts,Commercial
+3858,A4,MDIAOCN,Express Scripts,Commercial
+3858,A4,morgnrx,Express Scripts,Commercial
+3858,A4,MORGNRX,Express Scripts,Commercial
+3858,A4,MORSTAN,Express Scripts,Commercial
+3858,A4, NJRA,Express Scripts,Commercial
+3858,A4,NYYA,Express Scripts,Commercial
+3858,A4,nyye,Express Scripts,Commercial
+3858,A4,NZ4A,Express Scripts,Commercial
+3858,A4,PANA,Express Scripts,Commercial
+3858,A4,PANN,Express Scripts,Commercial
+3858,A4,RENTOKI,Express Scripts,Commercial
+3858,A4,TIFFANY,Express Scripts,Commercial
+3858,A4,UAPLO24,Express Scripts,Commercial
+3858,A4,V2UA,Express Scripts,Commercial
+3858,A4,WFLEET1,Express Scripts,Commercial
+3858,A4,WSPUSA1,Express Scripts,Commercial
+3858,A4,Z9VA,Express Scripts,Commercial
+3858,A4,,Express Scripts,Commercial
+3858,MA,2GDA,Express Scripts,Medicaid
+3858,MD,AN9A,Express Scripts,Medicare
+3858,MD,GH3A,Express Scripts,Medicare
+3858,WC,GH3A,Express Scripts,Commercial
+3858,WC,HIGA,Express Scripts,Commercial
+4261,CAL,NJPLIGA,Optum,Commercial
+4303,TELE,19,Medicare Part B,Commercial
+4303,TELE,30002,Optum,Commercial
+4303,TELE,NJ022041785601,Medicare Part B,Commercial
+4303,TELE,NJ022080590110,Medicare Part B,Commercial
+4303,TELE,NJ022081694101,Medicare Part B,Commercial
+4303,TELE,nj022081694101,Medicare Part B,Commercial
+4303,TELE,,Medicare Part B,Commercial
+4336,77993322,*,Caremark,Medicare
+4336,77993322,,Caremark,Medicare
+4336,77993333,RX33BA,Caremark,Commercial
+4336,ADV,RX0139,Caremark,Commercial
+4336,ADV,RX0218,Caremark,Commercial
+4336,ADV,RX0403,Caremark,Commercial
+4336,ADV,RX0467,Caremark,Commercial
+4336,ADV,RX0480,Caremark,Commercial
+4336,ADV,RX0583,Caremark,Commercial
+4336,ADV,RX0678,Caremark,Commercial
+4336,ADV,RX1412,Caremark,Commercial
+4336,ADV,RX1417,Caremark,Commercial
+4336,ADV,RX1555,Caremark,Commercial
+4336,ADV,RX1745,Caremark,Commercial
+4336,ADV,RX20AG,Caremark,Commercial
+4336,ADV,RX2129,Caremark,Commercial
+4336,ADV,RX2169,Caremark,Commercial
+4336,ADV,RX21ED,Caremark,Commercial
+4336,ADV,RX22MA,Caremark,Commercial
+4336,ADV,RX2355,Caremark,Commercial
+4336,ADV,RX23EF,Caremark,Commercial
+4336,ADV,RX23MD,Caremark,Commercial
+4336,ADV,RX2458,Caremark,Commercial
+4336,ADV,RX24CN,Caremark,Commercial
+4336,ADV,RX24GA,Caremark,Commercial
+4336,ADV,rx24gf,Caremark,Commercial
+4336,ADV,RX25AQ,Caremark,Commercial
+4336,ADV,RX2738,Caremark,Commercial
+4336,ADV,RX3140,Caremark,Commercial
+4336,ADV,rx3259,Caremark,Commercial
+4336,ADV,RX3259,Caremark,Commercial
+4336,ADV,RX3261,Caremark,Commercial
+4336,ADV,RX3602,Caremark,Commercial
+4336,ADV,RX3826,Caremark,Commercial
+4336,ADV,RX4116,Caremark,Commercial
+4336,ADV,RX4145,Caremark,Commercial
+4336,ADV,RX6027,Caremark,Commercial
+4336,ADV,RX6096,Caremark,Commercial
+4336,ADV,RX6896,Caremark,Commercial
+4336,ADV,RX7114,Caremark,Commercial
+4336,ADV,RX7117,Caremark,Commercial
+4336,ADV,RX7180,Caremark,Commercial
+4336,ADV,RX7511,Caremark,Commercial
+4336,ADV,RX8556,Caremark,Commercial
+4336,ADV,RXCVSD,Caremark,Commercial
+4336,ADV,,Caremark,Commercial
+4336,MCAIDADV,RX8895,Caremark,Medicaid
+4336,MEDDADV,RX0139,Caremark,Medicare
+4336,MEDDADV,RX0218,Caremark,Medicare
+4336,MEDDADV,rx0218,Caremark,Medicare
+4336,MEDDADV,RX0426,Caremark,Medicare
+4336,MEDDADV,RX0467,Caremark,Medicare
+4336,MEDDADV,RX0480,Caremark,Medicare
+4336,MEDDADV,RX0678,Caremark,Medicare
+4336,MEDDADV,RX1357,Caremark,Medicare
+4336,MEDDADV,RX1412,Caremark,Medicare
+4336,MEDDADV,RX1417,Caremark,Medicare
+4336,MEDDADV,RX1555,Caremark,Medicare
+4336,MEDDADV,RX1745,Caremark,Medicare
+4336,MEDDADV,RX1970,Caremark,Medicare
+4336,MEDDADV,RX20AG,Caremark,Medicare
+4336,MEDDADV,RX20CB,Caremark,Medicare
+4336,MEDDADV,RX21ED,Caremark,Medicare
+4336,MEDDADV,RX21HE,Caremark,Medicare
+4336,MEDDADV,RX2222,Caremark,Medicare
+4336,MEDDADV,RX22MA,Caremark,Medicare
+4336,MEDDADV,RX2355,Caremark,Medicare
+4336,MEDDADV,RX23BU,Caremark,Medicare
+4336,MEDDADV,RX23EF,Caremark,Medicare
+4336,MEDDADV,RX23MD,Caremark,Medicare
+4336,MEDDADV,RX2458,Caremark,Medicare
+4336,MEDDADV,RX24BE,Caremark,Medicare
+4336,MEDDADV,RX24GA,Caremark,Medicare
+4336,MEDDADV,RX2738,Caremark,Medicare
+4336,MEDDADV,RX3140,Caremark,Medicare
+4336,MEDDADV,RX3259,Caremark,Medicare
+4336,MEDDADV,RX3512,Caremark,Medicare
+4336,MEDDADV,RX3602,Caremark,Medicare
+4336,MEDDADV,RX3629,Caremark,Medicare
+4336,MEDDADV,RX3826,Caremark,Medicare
+4336,MEDDADV,RX4116,Caremark,Medicare
+4336,MEDDADV,RX4136,Caremark,Medicare
+4336,MEDDADV,RX4145,Caremark,Medicare
+4336,MEDDADV,RX6027,Caremark,Medicare
+4336,MEDDADV,RX6530,Caremark,Medicare
+4336,MEDDADV,RX6896,Caremark,Medicare
+4336,MEDDADV,RX7114,Caremark,Medicare
+4336,MEDDADV,RX7117,Caremark,Medicare
+4336,MEDDADV,rx7180,Caremark,Medicare
+4336,MEDDADV,RX7380,Caremark,Medicare
+4336,MEDDADV,RX7511,Caremark,Medicare
+4336,MEDDADV,RX8556,Caremark,Medicare
+4336,MEDDADV,rx8556,Caremark,Medicare
+4336,MEDDADV,RXCVSD,Caremark,Medicare
+4336,MEDDADV,,Caremark,Medicare
+4336,MEDDPRIME,RX20CY,Caremark,Medicare
+4336,WP,RX1417,Caremark,Commercial
+4336,WP,RX7114,Caremark,Commercial
+4336,HEL,WLS,Caremark,Commercial
+4682,CN,ec12701041,Coupon,Coupon
+4682,CN,EC40401040,Coupon,Coupon
+4682,CN,EC48017020,Coupon,Coupon
+4682,CN,EC57010090,Coupon,Coupon
+4682,CN,EC57014091,Coupon,Coupon
+4682,CN,EC57047006,Coupon,Coupon
+4682,CN,EC86001028,Coupon,Coupon
+4682,CN,EC86001036,Coupon,Coupon
+4682,CN,ec94012035,Coupon,Coupon
+4682,CN,ECVASCEPA,Coupon,Coupon
+4682,CN,ev57006508,Coupon,Coupon
+4682,CN,,Coupon,Coupon
+5947,CLAIMCR,2547TRN,Optum,Commercial
+5947,CLAIMCR,4138vbn,Optum,Commercial
+5947,CLAIMCR,9677SMJ,Optum,Commercial
+5947,CLAIMCR,PERKS24,Optum,Commercial
+6053,MSC,4051,Coupon,Coupon
+6053,MSC,8602,Coupon,Coupon
+6053,MSC,874,Coupon,Coupon
+6558,HEL,YURA,Caremark,Commercial
+8878,WDRX,RXPB3,Express Scripts,Coupon
+9893,DCAE1,RXPB3,Express Scripts,Coupon
+11552,BCTX,24,Blue Cross Blue Shield,Commercial
+11552,BCTX,1002,Blue Cross Blue Shield,Commercial
+11552,ILDR,0,BCBSIL,Commercial
+11552,ILDR,200,BCBSIL,Commercial
+11552,ILDR,8888,BCBSIL,Commercial
+11552,ILDR,,BCBSIL,Commercial
+11552,MAPDTXG,ENRG,Caremark,Medicare
+12114,COBPCS,104,Caremark,Medicare
+12833,FLBC,FNL344900101,Caremark,Commercial
+12833,MEDDPRIME,S5904,MEDDPRIME,Medicare
+13410,HEL,,Caremark,Commercial
+13865,HEL,,Caremark,Commercial
+14179,9743,10039,Express Scripts,Commercial
+14179,9743,10045,Express Scripts,Commercial
+14179,9743,1122,Express Scripts,Commercial
+14179,9743,1138,Express Scripts,Commercial
+14179,9743,1236,Express Scripts,Commercial
+14179,9743,1349,Express Scripts,Commercial
+14179,9743,2200,Express Scripts,Commercial
+14179,9743,2304,Express Scripts,Commercial
+14179,9743,3216,Express Scripts,Commercial
+14179,9743,4226,Express Scripts,Commercial
+15433,SSN,572,Liviniti (Southern Scripts),Commercial
+15574,ASPROD1,,Medimpact,Medicare
+15581,3200000,0NG00010292,Humana,Medicare
+15581,3200000,2FGA,Humana,Medicare
+15581,3200000,9a529,Humana,Medicare
+15581,3200000,AMNJ,Humana,Medicare
+15581,3200000,CGMAPDRX,Humana,Medicare
+15581,3200000,CIGPDPRX,Humana,Medicare
+15581,3200000,COS,Humana,Medicare
+15581,3200000,DXSWCP002774136,Humana,Medicare
+15581,3200000,EICG,Humana,Medicare
+15581,3200000,P5412,Humana,Medicare
+15581,3200000,P5414,Humana,Medicare
+15581,3200000,p5414,Humana,Medicare
+15581,3200000,RX7704,Humana,Medicare
+15581,3200000,RXAETD,Humana,Medicare
+15581,3200000,RXCVSD,Humana,Medicare
+15581,3200000,WKPA,Humana,Medicare
+15581,3200000,WM2A,Humana,Medicare
+15581,3200000,Y0031,Humana,Medicare
+15581,3200000,y0031,Humana,Medicare
+15581,3200000,,Humana,Medicare
+15599,5440000,AMNJ,Humana,Medicare
+15599,5440000,horizon,Humana,Medicare
+15599,5440000,HORIZON,Humana,Medicare
+15599,5440000,RXAETD,Humana,Medicare
+15599,5440000,WKPA,Humana,Medicare
+15599,5440000,,Humana,Medicare
+15814,6430000,*,Optum,Commercial
+15814,6430000,NJACA,Optum,Commercial
+15814,6430000,*,Optum,Commercial
+15814,6430000,NJACA,Optum,Commercial
+15814,6430000,,Optum,Commercial
+15839,3840000,,Optum,Commercial
+15995,GDC,DR33,GoodRx,Coupon
+16499,DSNPPRI,RXHRZN,Horizon,Medicare
+16499,HZRX,000273P0002,Horizon,Commercial
+16499,HZRX,000273P0004,Horizon,Commercial
+16499,HZRX,00028U50000,Horizon,Commercial
+16499,HZRX,000301O0001,Horizon,Commercial
+16499,HZRX,000306H0002,Horizon,Commercial
+16499,HZRX,00100HC0022011,Horizon,Commercial
+16499,HZRX,00100HC0024001,Horizon,Commercial
+16499,HZRX,00100HC0024020,Horizon,Commercial
+16499,HZRX,00100HC0024026,Horizon,Commercial
+16499,HZRX,00100HC0024028,Horizon,Commercial
+16499,HZRX,00100HC0024030,Horizon,Commercial
+16499,HZRX,00100HC0024032,Horizon,Commercial
+16499,HZRX,00100HC0024056,Horizon,Commercial
+16499,HZRX,00100HC0024058,Horizon,Commercial
+16499,HZRX,00100HC0024060,Horizon,Commercial
+16499,HZRX,00100HC0024062,Horizon,Commercial
+16499,HZRX,00100HC0024068,Horizon,Commercial
+16499,HZRX,00100HC0024070,Horizon,Commercial
+16499,HZRX,00100HC0025027,Horizon,Commercial
+16499,HZRX,00100HC0025057,Horizon,Commercial
+16499,HZRX,00100HC0026038,Horizon,Commercial
+16499,HZRX,00100HC0026040,Horizon,Commercial
+16499,HZRX,00100HC0041039,Horizon,Commercial
+16499,HZRX,00100HC0059051,Horizon,Commercial
+16499,HZRX,001327G0000,Horizon,Commercial
+16499,HZRX,0015R60000,Horizon,Commercial
+16499,HZRX,0017R40000,Horizon,Commercial
+16499,HZRX,00211Z70001,Horizon,Commercial
+16499,HZRX,235960002,Horizon,Commercial
+16499,HZRX,00291K80002,Horizon,Commercial
+16499,HZRX,00291K80003,Horizon,Commercial
+16499,HZRX,003056O0000,Horizon,Commercial
+16499,HZRX,00308a00002,Horizon,Commercial
+16499,HZRX,003117P0000,Horizon,Commercial
+16499,HZRX,003186K0003,Horizon,Commercial
+16499,HZRX,003645A0001,Horizon,Commercial
+16499,HZRX,003696J0000,Horizon,Commercial
+16499,HZRX,003711T0000,Horizon,Commercial
+16499,HZRX,003834Q0000,Horizon,Commercial
+16499,HZRX,00424S30001,Horizon,Commercial
+16499,HZRX,004505G0000,Horizon,Commercial
+16499,HZRX,00462O40000,Horizon,Commercial
+16499,HZRX,4.83E+05,Horizon,Commercial
+16499,HZRX,5.10E+03,Horizon,Commercial
+16499,HZRX,00583c0001,Horizon,Commercial
+16499,HZRX,00583C0001,Horizon,Commercial
+16499,HZRX,00583C0080,Horizon,Commercial
+16499,HZRX,6.02E+06,Horizon,Commercial
+16499,HZRX,006048P0000,Horizon,Commercial
+16499,HZRX,006048P0001,Horizon,Commercial
+16499,HZRX,00622T90000,Horizon,Commercial
+16499,HZRX,006951N0000,Horizon,Commercial
+16499,HZRX,008015K0000,Horizon,Commercial
+16499,HZRX,00801V60050,Horizon,Commercial
+16499,HZRX,008036C0000,Horizon,Commercial
+16499,HZRX,008058X0050,Horizon,Commercial
+16499,HZRX,00805X50000,Horizon,Commercial
+16499,HZRX,00806C30050,Horizon,Commercial
+16499,HZRX,816400001,Horizon,Commercial
+16499,HZRX,008513J0010,Horizon,Commercial
+16499,HZRX,851740060,Horizon,Commercial
+16499,HZRX,008518T0000,Horizon,Commercial
+16499,HZRX,00851N30053,Horizon,Commercial
+16499,HZRX,859440040,Horizon,Commercial
+16499,HZRX,859440045,Horizon,Commercial
+16499,HZRX,008701J0010,Horizon,Commercial
+16499,HZRX,0100HC0022,Horizon,Commercial
+16499,HZRX,01525C0000,Horizon,Commercial
+16499,HZRX,252850001,Horizon,Commercial
+16499,HZRX,03-90700,Horizon,Commercial
+16499,HZRX,03117P0000,Horizon,Commercial
+16499,HZRX,03117p0000,Horizon,Commercial
+16499,HZRX,0462o40000,Horizon,Commercial
+16499,HZRX,472050000,Horizon,Commercial
+16499,HZRX,6.02E+06,Horizon,Commercial
+16499,HZRX,760810001,Horizon,Commercial
+16499,HZRX,816400001,Horizon,Commercial
+16499,HZRX,859440040,Horizon,Commercial
+16499,HZRX,0921K80000,Horizon,Commercial
+16499,HZRX,0NG00010125,Horizon,Commercial
+16499,HZRX,0NG00010171,Horizon,Commercial
+16499,HZRX,0NG00010178,Horizon,Commercial
+16499,HZRX,0NG00010272,Horizon,Commercial
+16499,HZRX,0NG00010279,Horizon,Commercial
+16499,HZRX,0NG00010292,Horizon,Commercial
+16499,HZRX,0NG00010305,Horizon,Commercial
+16499,HZRX,0NG00010336,Horizon,Commercial
+16499,HZRX,0NG00010495,Horizon,Commercial
+16499,HZRX,1008C0009,Horizon,Commercial
+16499,HZRX,100HC-0008,Horizon,Commercial
+16499,HZRX,100HC-0010,Horizon,Commercial
+16499,HZRX,100HC-0024,Horizon,Commercial
+16499,HZRX,100hc-0024,Horizon,Commercial
+16499,HZRX,100HC0008,Horizon,Commercial
+16499,HZRX,100HC0010,Horizon,Commercial
+16499,HZRX,100HC0011,Horizon,Commercial
+16499,HZRX,100HC0024,Horizon,Commercial
+16499,HZRX,100hc0024,Horizon,Commercial
+16499,HZRX,4085944,Horizon,Commercial
+16499,HZRX,HORIZON,Horizon,Commercial
+16499,HZRX,HZRX,Horizon,Commercial
+16499,HZRX,hzrx,Horizon,Commercial
+16499,HZRX,RXHRZN,Horizon,Commercial
+16499,HZRX,,Horizon,Commercial
+16499,PDPNJ,RXHRZN,Horizon,Medicare
+16499,PDPNJG,RXHRZN,Horizon,Medicare
+16499,PPOBH,RXBRVN,Horizon,Medicare
+17010,0215CCMM,3174704,Express Scripts,Commercial
+17010,0215CCMM,3331160,Express Scripts,Commercial
+17010,0215CCMM,CGMAPDRX,Express Scripts,Medicare
+17010,0215CCMM,cigpdprx,Express Scripts,Medicare
+17010,0215CCMM,CIGPDPRX,Express Scripts,Medicare
+17010,0215CCMM,CIGUG0000631986,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0000637842,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0000650770,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0000651163,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0000652078,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0000652197,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0002500786,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0003153616,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0003174704,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0003332183,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0003334470,Express Scripts,Commercial
+17010,0215CCMM,CIGUG0003339538,Express Scripts,Commercial
+17010,0215CCMM,CIGUG00033460,Express Scripts,Commercial
+17010,0215CCMM,,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336481,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003339522,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341386,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346044,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346481,Express Scripts,Commercial
+17010,0215COMM,,Express Scripts,Commercial
+17010,0218INTL,613520,Express Scripts,Commercial
+17010,0218INTL,627738,Express Scripts,Commercial
+17010,0218INTL,635334,Express Scripts,Commercial
+17010,0218INTL,3153616,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000616729,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000618284,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000621172,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000631318,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000634664,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000639213,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651630,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000659048,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000660187,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000660539,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000716923,Express Scripts,Commercial
+17010,CIMCARE,2HMGRPMA,Express Scripts,Medicare
+17010,CIMCARE,3210060,Express Scripts,Medicare
+17010,CIMCARE,CGMAPDRX,Express Scripts,Medicare
+17010,CIMCARE,CIGPDPRX,Express Scripts,Medicare
+17010,CIMCARE,,Express Scripts,Medicare
+17290,55101202,X7540,Caremark,Commercial
+17290,ACR,99996001,Drexi,Commercial
+17688,9743,19013,EmpiRx Health,Commercial
+17688,9743,19077,Caremark,Commercial
+18844,3F,fcmj5dwb,CalOptima,Medicaid
+18844,3F,FCRYTNS,Humana,Medicare
+18844,3F,FVTRUEPORT50,Humana,Medicare
+18844,3F,MGDCARE,Humana,Medicare
+18844,3F,,Humana,Medicare
+19158,CNRX,AC20029003,Coupon,Coupon
+19158,CNRX,AC20029005,Coupon,Coupon
+19158,CNRX,AC20029007,Coupon,Coupon
+19158,CNRX,AC68036001,Coupon,Coupon
+19158,CNRX,AC68036002,Coupon,Coupon
+19158,CNRX,AC68057019,Coupon,Coupon
+19158,CNRX,AV20019005,Coupon,Coupon
+19158,CNRX,ec12701041,Coupon,Coupon
+19158,CNRX,EC20014001,Coupon,Coupon
+19158,CNRX,EC48006034,Coupon,Coupon
+19363,7283,SVECARD,Coupon,Coupon
+19363,7283,svecg1221,Coupon,Coupon
+19660,289902,WCPDP,Express Scripts,Medicare
+19876,CHIPPO,EMR,Coupon,Coupon
+19876,CHIPPO,XAF,Coupon,Coupon
+19876,CHIPPO,xaf,Coupon,Coupon
+19876,CHIPPO,,Coupon,Coupon
+20099,IS   HEL,WLDA,Coupon,Coupon
+20099,IS   HEL,WLHA,Coupon,Coupon
+20099,WG,3004940015,Coupon,Coupon
+20099,WG,WL6A,Coupon,Coupon
+20099,WG,WL7A,Coupon,Coupon
+20099,WG,WLAA,Coupon,Coupon
+20099,WG,WLDA,Coupon,Coupon
+20099,WG,WLHA,Coupon,Coupon
+20107,IRXCOMOPAP,WKPA,Caremark,Commercial
+20107,WP,WKPA,Caremark,Medicaid
+20107,WP,,Caremark,Medicaid
+20115,IS,WM2A,Coupon,Coupon
+22022,ICS,BOB,Coupon,Coupon
+23575,9999,SASAH,Optum,Commercial
+24368,3207,A18193,Coupon,Coupon
+25945,SSN,H880573,Coupon,Coupon
+26530,RXV1,GHDADM,Coupon,Coupon
+26696,77993333,BSCCOMM,Blue Shield of California,Commercial
+28406,OSCAR,RX1555,Caremark,Commercial
+11111,,,Coupon,Coupon
+11552,BCTX,0,Express Scripts,Commercial
+11552,BCTX,1,Express Scripts,Commercial
+11552,BCTX,10,Express Scripts,Commercial
+11552,BCTX,1017,Express Scripts,Commercial
+11552,BCTX,1601,Express Scripts,Commercial
+11552,BCTX,2,Express Scripts,Commercial
+11552,BCTX,53,Express Scripts,Commercial
+11552,BCTX,,Express Scripts,Commercial
+11552,BOE,1000,Express Scripts,Commercial
+11552,ILDR,0,Express Scripts,Commercial
+11552,ILDR,1001,Express Scripts,Commercial
+11552,ILDR,101,Express Scripts,Commercial
+11552,ILDR,3,Express Scripts,Commercial
+11552,ILDR,6,Express Scripts,Commercial
+11552,ILDR,8888,Express Scripts,Commercial
+12528,HUN,VRX0363,Humana,Medicare
+12833,FLBC,FN5695306301,Caremark,Commercial
+12833,FLBC,FN9880102801,Caremark,Commercial
+12833,FLBC,FNB582400201,Caremark,Commercial
+13410,HUN,,Humana,Medicare
+13865,,611870,Caremark,Commercial
+13865,,,Caremark,Commercial
+14179,9743,10033,Caremark,Commercial
+14179,9743,10045,Caremark,Commercial
+14179,9743,10052,Caremark,Commercial
+14179,9743,10058,Caremark,Commercial
+14179,9743,10078,Caremark,Commercial
+14179,9743,1106,Caremark,Commercial
+14179,9743,1108,Caremark,Commercial
+14179,9743,1127,Caremark,Commercial
+14179,9743,1140,Caremark,Commercial
+14179,9743,1141,Caremark,Commercial
+14179,9743,1210,Caremark,Commercial
+14179,9743,1240,Caremark,Commercial
+14179,9743,1339,Caremark,Commercial
+14179,9743,1625,Caremark,Commercial
+14179,9743,1827,Caremark,Commercial
+14179,9743,1843,Caremark,Commercial
+14179,9743,2102,Caremark,Commercial
+14179,9743,2111,Caremark,Commercial
+14179,9743,2116,Caremark,Commercial
+14179,9743,2118,Caremark,Commercial
+14179,9743,2200,Caremark,Commercial
+14179,9743,2220,Caremark,Commercial
+14179,9743,2314,Caremark,Commercial
+14179,9743,2317,Caremark,Commercial
+14179,9743,3216,Caremark,Commercial
+14179,9743,3226,Caremark,Commercial
+14179,9743,3234,Caremark,Commercial
+14179,9743,3238,Caremark,Commercial
+14179,9743,3248,Caremark,Commercial
+14179,9743,3345,Caremark,Commercial
+14179,9743,3710,Caremark,Commercial
+14179,9743,3720,Caremark,Commercial
+14179,9743,4117,Caremark,Commercial
+14179,9743,4121,Caremark,Commercial
+14179,9743,4133,Caremark,Commercial
+14179,9743,4226,Caremark,Commercial
+14179,9743,4233,Caremark,Commercial
+14179,9743,4245,Caremark,Commercial
+14179,9743,8134,Caremark,Commercial
+15251,PRX2000,NTX70,Caremark,Commercial
+15251,PRX2000,ntx70,Caremark,Commercial
+15433,SSN,814,Liviniti (Southern Scripts),Commercial
+15433,SSN,H880540,Liviniti (Southern Scripts),Commercial
+15433,SSN,RX4760,Liviniti (Southern Scripts),Commercial
+15433,SSN,rx4760,Liviniti (Southern Scripts),Commercial
+15433,SSN,YA2HW,Liviniti (Southern Scripts),Commercial
+15574,ASPROD1,VCM02,MedImpact,Medicare
+15574,ASPROD1,VNS01,MedImpact,Medicare
+15574,ASPROD1,vns01,MedImpact,Medicare
+15581,3200000,2A370,Humana,Medicare
+15581,3200000,2a760001,Humana,Medicare
+15581,3200000,2FFA,Humana,Medicare
+15581,3200000,2FGA,Humana,Medicare
+15581,3200000,2GDA,Humana,Medicare
+15581,3200000,2GGA,Humana,Medicare
+15581,3200000,7A086,Humana,Medicare
+15581,3200000,9a529,Humana,Medicare
+15581,3200000,AMNJ,Humana,Medicare
+15581,3200000,HZRN,Humana,Medicare
+15581,3200000,MPDACUNJ,Humana,Medicare
+15581,3200000,MPDCSP,Humana,Medicare
+15581,3200000,P5414,Humana,Medicare
+15581,3200000,RX8556,Humana,Medicare
+15581,3200000,rx8556,Humana,Medicare
+15581,3200000,RXAETD,Humana,Medicare
+15581,3200000,rxcvsd,Humana,Medicare
+15581,3200000,rxhrzn,Humana,Medicare
+15581,3200000,WKPA,Humana,Medicare
+15581,3200000,WM2A,Humana,Medicare
+15581,3200000,,Humana,Medicare
+15599,5440000,19640100,Humana,Medicare
+15599,5440000,247318,Humana,Medicare
+15599,5440000,2A370,Humana,Medicare
+15599,5440000,2GDA,Humana,Medicare
+15599,5440000,AMNJ,Humana,Medicare
+15599,5440000,HORIZON,Humana,Medicare
+15599,5440000,MPDACUNJ,Humana,Medicare
+15599,5440000,RXAETD,Humana,Medicare
+15599,5440000,RXCVSD,Humana,Medicare
+15599,5440000,RXHRZN,Humana,Medicare
+15599,5440000,VAMEDICAID,Humana,Medicare
+15599,5440000,,Humana,Medicare
+15814,*,*,Optum,Commercial
+15814,*,IBXCOMM,Optum,Commercial
+15814,*,ibxcomm,Optum,Commercial
+15814,6090000,*,Optum,Commercial
+15814,6090000,3171120,Optum,Commercial
+15814,6090000,AHCOMM,Optum,Commercial
+15814,6090000,ibxcomm,Optum,Commercial
+15814,6090000,IBXCOMM,Optum,Commercial
+15814,6150000,,Optum,Commercial
+15814,6430000,*,Optum,Commercial
+15814,6430000,IBC999ELG,Optum,Commercial
+15814,6430000,IBXACA,Optum,Commercial
+15814,6430000,njaca,Optum,Commercial
+15814,6430000,NJACA,Optum,Commercial
+15814,6430000,SONJCOM,Optum,Commercial
+15814,6430000,,Optum,Commercial
+15839,3840000,*,Optum,Commercial
+15839,3840000,AHA,Optum,Commercial
+15839,3840000,SONJCOM,Optum,Commercial
+15905,HUN,14165041,Humana,Medicare
+15905,,14163030,Humana,Medicare
+15905,,14165041,Humana,Medicare
+15905,,14180192,Humana,Medicare
+15995,GDC,MAHA,Coupon,Coupon
+16127,CWHS,PPF,Coupon,Coupon
+16499,DSNPPRI,RXHRZN,Horizon,Medicare
+16499,DSNPPRI,rxhrzn,Horizon,Medicare
+16499,DSNPPRI,,Horizon,Medicare
+16499,HZRX,000001N0000,Horizon,Commercial
+16499,HZRX,000236P0000,Horizon,Commercial
+16499,HZRX,000251X0000,Horizon,Commercial
+16499,HZRX,00027U70000,Horizon,Commercial
+16499,HZRX,000301P0000,Horizon,Commercial
+16499,HZRX,000305W0000,Horizon,Commercial
+16499,HZRX,000314U0000,Horizon,Commercial
+16499,HZRX,000337W0000,Horizon,Commercial
+16499,HZRX,000366T0000,Horizon,Commercial
+16499,HZRX,000368N0000,Horizon,Commercial
+16499,HZRX,000504Z0005,Horizon,Commercial
+16499,HZRX,00055I90000,Horizon,Commercial
+16499,HZRX,000675Z0000,Horizon,Commercial
+16499,HZRX,000945P0001,Horizon,Commercial
+16499,HZRX,000998N0000,Horizon,Commercial
+16499,HZRX,00100HC0022011,Horizon,Commercial
+16499,HZRX,00100HC0023008,Horizon,Commercial
+16499,HZRX,00100HC0024001,Horizon,Commercial
+16499,HZRX,00100HC0024020,Horizon,Commercial
+16499,HZRX,00100HC0024026,Horizon,Commercial
+16499,HZRX,00100HC0024028,Horizon,Commercial
+16499,HZRX,00100HC0024030,Horizon,Commercial
+16499,HZRX,00100HC0024032,Horizon,Commercial
+16499,HZRX,00100HC0024056,Horizon,Commercial
+16499,HZRX,00100HC0024058,Horizon,Commercial
+16499,HZRX,00100HC0024060,Horizon,Commercial
+16499,HZRX,00100HC0024062,Horizon,Commercial
+16499,HZRX,00100HC0024068,Horizon,Commercial
+16499,HZRX,00100HC0025002,Horizon,Commercial
+16499,HZRX,00100HC0025027,Horizon,Commercial
+16499,HZRX,00100HC0025057,Horizon,Commercial
+16499,HZRX,00100HC0026038,Horizon,Commercial
+16499,HZRX,00100HC0089223,Horizon,Commercial
+16499,HZRX,00100HC0089229,Horizon,Commercial
+16499,HZRX,00104e90000,Horizon,Commercial
+16499,HZRX,00113T10002,Horizon,Commercial
+16499,HZRX,001271R0000,Horizon,Commercial
+16499,HZRX,001436P0000,Horizon,Commercial
+16499,HZRX,00158Y30003,Horizon,Commercial
+16499,HZRX,001627N0000,Horizon,Commercial
+16499,HZRX,001632Z0000,Horizon,Commercial
+16499,HZRX,001806Q0002,Horizon,Commercial
+16499,HZRX,00181G80001,Horizon,Commercial
+16499,HZRX,002027M0000,Horizon,Commercial
+16499,HZRX,002168Z0000,Horizon,Commercial
+16499,HZRX,002408D0003,Horizon,Commercial
+16499,HZRX,002612B0001,Horizon,Commercial
+16499,HZRX,002638K0000,Horizon,Commercial
+16499,HZRX,002836X0000,Horizon,Commercial
+16499,HZRX,00303T80003,Horizon,Commercial
+16499,HZRX,00323H20003,Horizon,Commercial
+16499,HZRX,00328W20000,Horizon,Commercial
+4336,ADV,RX0162,Caremark,Commercial
+4336,ADV,RX0218,Caremark,Commercial
+4336,ADV,RX0233,Caremark,Commercial
+4336,ADV,rx0233,Caremark,Commercial
+4336,ADV,RX0266,Caremark,Commercial
+4336,ADV,RX0272,Caremark,Commercial
+4336,ADV,RX0353,Caremark,Commercial
+4336,ADV,rx0403,Caremark,Commercial
+4336,ADV,RX0403,Caremark,Commercial
+4336,ADV,RX0410,Caremark,Commercial
+4336,ADV,RX0457,Caremark,Commercial
+4336,ADV,RX0480,Caremark,Commercial
+4336,ADV,RX0495,Caremark,Commercial
+4336,ADV,RX0522,Caremark,Commercial
+4336,ADV,RX0528,Caremark,Commercial
+4336,ADV,rx0535,Caremark,Commercial
+4336,ADV,RX0535,Caremark,Commercial
+4336,ADV,RX0573,Caremark,Commercial
+4336,ADV,RX0579,Caremark,Commercial
+4336,ADV,RX0583,Caremark,Commercial
+4336,ADV,RX0619,Caremark,Commercial
+4336,ADV,RX0627,Caremark,Commercial
+4336,ADV,RX0663,Caremark,Commercial
+4336,ADV,RX0677,Caremark,Commercial
+4336,ADV,RX0678,Caremark,Commercial
+4336,ADV,rx0741,Caremark,Commercial
+4336,ADV,RX0741,Caremark,Commercial
+4336,ADV,RX0839,Caremark,Commercial
+4336,ADV,rx0839,Caremark,Commercial
+4336,ADV,RX0871,Caremark,Commercial
+4336,ADV,RX0968,Caremark,Commercial
+4336,ADV,RX0982,Caremark,Commercial
+4336,ADV,RX1021,Caremark,Commercial
+4336,ADV,RX1056,Caremark,Commercial
+4336,ADV,RX1058,Caremark,Commercial
+4336,ADV,RX1095,Caremark,Commercial
+4336,ADV,RX1103,Caremark,Commercial
+4336,ADV,rx1104,Caremark,Commercial
+4336,ADV,RX1104,Caremark,Commercial
+4336,ADV,rx1108,Caremark,Commercial
+4336,ADV,RX1108,Caremark,Commercial
+4336,ADV,RX1113,Caremark,Commercial
+4336,ADV,RX1123,Caremark,Commercial
+4336,ADV,RX1181,Caremark,Commercial
+4336,ADV,RX1221,Caremark,Commercial
+4336,ADV,RX1236,Caremark,Commercial
+4336,ADV,RX1249,Caremark,Commercial
+4336,ADV,RX1258,Caremark,Commercial
+4336,ADV,RX1285,Caremark,Commercial
+4336,ADV,RX1321,Caremark,Commercial
+4336,ADV,RX1340,Caremark,Commercial
+4336,ADV,RX1342,Caremark,Commercial
+4336,ADV,RX1352,Caremark,Commercial
+4336,ADV,RX1357,Caremark,Commercial
+4336,ADV,rx1357,Caremark,Commercial
+4336,ADV,RX1371,Caremark,Commercial
+4336,ADV,RX1373,Caremark,Commercial
+4336,ADV,rx1375,Caremark,Commercial
+4336,ADV,RX1375,Caremark,Commercial
+4336,ADV,RX1386,Caremark,Commercial
+4336,ADV,RX1393,Caremark,Commercial
+4336,ADV,rx1393,Caremark,Commercial
+4336,ADV,RX1412,Caremark,Commercial
+4336,ADV,RX1414,Caremark,Commercial
+4336,ADV,RX1417,Caremark,Commercial
+4336,ADV,RX1434,Caremark,Commercial
+4336,ADV,RX1438,Caremark,Commercial
+4336,ADV,RX1471,Caremark,Commercial
+4336,ADV,RX1509,Caremark,Commercial
+4336,ADV,RX1524,Caremark,Commercial
+4336,ADV,RX1555,Caremark,Commercial
+4336,ADV,RX1580,Caremark,Commercial
+4336,ADV,RX1600,Caremark,Commercial
+4336,ADV,RX1637,Caremark,Commercial
+4336,ADV,RX1721,Caremark,Commercial
+4336,ADV,rx1721,Caremark,Commercial
+4336,ADV,RX1745,Caremark,Commercial
+4336,ADV,RX1768,Caremark,Commercial
+4336,ADV,RX1797,Caremark,Commercial
+4336,ADV,RX1970,Caremark,Commercial
+4336,ADV,RX20AG,Caremark,Commercial
+4336,ADV,RX20AM,Caremark,Commercial
+4336,ADV,RX20AR,Caremark,Commercial
+4336,ADV,RX20BJ,Caremark,Commercial
+4336,ADV,RX20CB,Caremark,Commercial
+4336,ADV,RX20CH,Caremark,Commercial
+4336,ADV,rx20ch,Caremark,Commercial
+4336,ADV,RX20CP,Caremark,Commercial
+4336,ADV,rx20cp,Caremark,Commercial
+4336,ADV,RX20CT,Caremark,Commercial
+4336,ADV,RX20DD,Caremark,Commercial
+4336,ADV,RX20MY,Caremark,Commercial
+4336,ADV,RX2129,Caremark,Commercial
+4336,ADV,RX2160,Caremark,Commercial
+4336,ADV,RX2169,Caremark,Commercial
+4336,ADV,RX21AD,Caremark,Commercial
+4336,ADV,RX21AM,Caremark,Commercial
+4336,ADV,RX21BQ,Caremark,Commercial
+4336,ADV,rx21br,Caremark,Commercial
+4336,ADV,RX21BR,Caremark,Commercial
+4336,ADV,RX21BU,Caremark,Commercial
+4336,ADV,RX21CC,Caremark,Commercial
+4336,ADV,RX21CF,Caremark,Commercial
+4336,ADV,RX21CH,Caremark,Commercial
+4336,ADV,RX21CW,Caremark,Commercial
+4336,ADV,RX21DF,Caremark,Commercial
+4336,ADV,RX21EC,Caremark,Commercial
+4336,ADV,RX21ED,Caremark,Commercial
+4336,ADV,RX21EE,Caremark,Commercial
+4336,ADV,RX21GK,Caremark,Commercial
+4336,ADV,RX2222,Caremark,Commercial
+4336,ADV,RX22BD,Caremark,Commercial
+4336,ADV,RX22DK,Caremark,Commercial
+4336,ADV,RX22DN,Caremark,Commercial
+4336,ADV,RX22DT,Caremark,Commercial
+4336,ADV,RX22EU,Caremark,Commercial
+4336,ADV,RX22EV,Caremark,Commercial
+4336,ADV,RX22GD,Caremark,Commercial
+4336,ADV,rx22ma,Caremark,Commercial
+4336,ADV,RX22MA,Caremark,Commercial
+4336,ADV,RX2334,Caremark,Commercial
+4336,ADV,RX2355,Caremark,Commercial
+4336,ADV,RX23AA,Caremark,Commercial
+4336,ADV,RX23BW,Caremark,Commercial
+4336,ADV,RX23DR,Caremark,Commercial
+4336,ADV,RX23EA,Caremark,Commercial
+4336,ADV,RX23EF,Caremark,Commercial
+4336,ADV,RX23EG,Caremark,Commercial
+4336,ADV,RX23ET,Caremark,Commercial
+4336,ADV,RX23GN,Caremark,Commercial
+4336,ADV,RX23GY,Caremark,Commercial
+4336,ADV,rx23hq,Caremark,Commercial
+4336,ADV,RX23HQ,Caremark,Commercial
+4336,ADV,RX23JG,Caremark,Commercial
+4336,ADV,RX23KC,Caremark,Commercial
+4336,ADV,RX23KM,Caremark,Commercial
+4336,ADV,RX23KU,Caremark,Commercial
+4336,ADV,RX23KZ,Caremark,Commercial
+4336,ADV,RX23MD,Caremark,Commercial
+4336,ADV,RX2408,Caremark,Commercial
+4336,ADV,RX2424,Caremark,Commercial
+4336,ADV,RX2426,Caremark,Commercial
+4336,ADV,RX2427,Caremark,Commercial
+4336,ADV,RX2436,Caremark,Commercial
+4336,ADV,RX2440,Caremark,Commercial
+4336,ADV,RX2441,Caremark,Commercial
+4336,ADV,RX2458,Caremark,Commercial
+4336,ADV,RX2459,Caremark,Commercial
+4336,ADV,rx2459,Caremark,Commercial
+4336,ADV,RX24AK,Caremark,Commercial
+4336,ADV,RX24AT,Caremark,Commercial
+4336,ADV,RX24BS,Caremark,Commercial
+4336,ADV,RX24CK,Caremark,Commercial
+4336,ADV,RX24CM,Caremark,Commercial
+4336,ADV,RX24CN,Caremark,Commercial
+4336,ADV,RX24EQ,Caremark,Commercial
+4336,ADV,RX24FB,Caremark,Commercial
+4336,ADV,RX24FD,Caremark,Commercial
+4336,ADV,RX24FK,Caremark,Commercial
+4336,ADV,RX24GF,Caremark,Commercial
+4336,ADV,RX24HW,Caremark,Commercial
+4336,ADV,RX24JH,Caremark,Commercial
+4336,ADV,RX24MB,Caremark,Commercial
+4336,ADV,RX24MF,Caremark,Commercial
+4336,ADV,RX24NE,Caremark,Commercial
+4336,ADV,RX25AQ,Caremark,Commercial
+4336,ADV,RX25AY,Caremark,Commercial
+4336,ADV,RX25BM,Caremark,Commercial
+4336,ADV,RX25BZ,Caremark,Commercial
+4336,ADV,RX25CB,Caremark,Commercial
+4336,ADV,RX25CJ,Caremark,Commercial
+4336,ADV,RX25EB,Caremark,Commercial
+4336,ADV,RX25FV,Caremark,Commercial
+4336,ADV,RX25JY,Caremark,Commercial
+4336,ADV,RX25ME,Caremark,Commercial
+4336,ADV,RX2727,Caremark,Commercial
+4336,ADV,rx2738,Caremark,Commercial
+4336,ADV,RX2738,Caremark,Commercial
+4336,ADV,RX2762,Caremark,Commercial
+4336,ADV,RX2910,Caremark,Commercial
+4336,ADV,rx3060,Caremark,Commercial
+4336,ADV,RX3140,Caremark,Commercial
+4336,ADV,RX3141,Caremark,Commercial
+4336,ADV,RX3175,Caremark,Commercial
+4336,ADV,rx3192,Caremark,Commercial
+4336,ADV,RX3192,Caremark,Commercial
+4336,ADV,RX3198,Caremark,Commercial
+4336,ADV,RX3261,Caremark,Commercial
+4336,ADV,RX3263,Caremark,Commercial
+4336,ADV,RX3293,Caremark,Commercial
+4336,ADV,rx3514,Caremark,Commercial
+4336,ADV,RX3525,Caremark,Commercial
+4336,ADV,RX3578,Caremark,Commercial
+4336,ADV,RX3597,Caremark,Commercial
+4336,ADV,RX3609,Caremark,Commercial
+4336,ADV,RX3629,Caremark,Commercial
+4336,ADV,RX3630,Caremark,Commercial
+4336,ADV,RX3642,Caremark,Commercial
+4336,ADV,RX3647,Caremark,Commercial
+4336,ADV,RX3656,Caremark,Commercial
+4336,ADV,RX3667,Caremark,Commercial
+4336,ADV,RX3826,Caremark,Commercial
+4336,ADV,RX3895,Caremark,Commercial
+4336,ADV,RX4103,Caremark,Commercial
+4336,ADV,RX4104,Caremark,Commercial
+4336,ADV,RX4145,Caremark,Commercial
+4336,ADV,rx4149,Caremark,Commercial
+4336,ADV,RX4149,Caremark,Commercial
+4336,ADV,RX4189,Caremark,Commercial
+4336,ADV,RX4639,Caremark,Commercial
+4336,ADV,rx4724,Caremark,Commercial
+4336,ADV,RX4833,Caremark,Commercial
+4336,ADV,RX4878,Caremark,Commercial
+4336,ADV,RX4892,Caremark,Commercial
+4336,ADV,rx4892,Caremark,Commercial
+4336,ADV,RX5188,Caremark,Commercial
+4336,ADV,RX5203,Caremark,Commercial
+4336,ADV,RX5651,Caremark,Commercial
+4336,ADV,RX6000,Caremark,Commercial
+4336,ADV,RX6007,Caremark,Commercial
+4336,ADV,RX6027,Caremark,Commercial
+4336,ADV,rx6027,Caremark,Commercial
+4336,ADV,RX6036,Caremark,Commercial
+4336,ADV,RX6048,Caremark,Commercial
+4336,ADV,RX6055,Caremark,Commercial
+4336,ADV,RX6070,Caremark,Commercial
+4336,ADV,RX6086,Caremark,Commercial
+4336,ADV,RX6353,Caremark,Commercial
+4336,ADV,RX6370,Caremark,Commercial
+4336,ADV,RX6372,Caremark,Commercial
+4336,ADV,RX6509,Caremark,Commercial
+4336,ADV,RX6530,Caremark,Commercial
+4336,ADV,rx6530,Caremark,Commercial
+4336,ADV,RX6551,Caremark,Commercial
+4336,ADV,RX6566,Caremark,Commercial
+4336,ADV,RX6598,Caremark,Commercial
+4336,ADV,RX6896,Caremark,Commercial
+4336,ADV,RX7005,Caremark,Commercial
+4336,ADV,RX7149,Caremark,Commercial
+4336,ADV,RX7153,Caremark,Commercial
+4336,ADV,RX7170,Caremark,Commercial
+4336,ADV,RX7171,Caremark,Commercial
+4336,ADV,RX7212,Caremark,Commercial
+4336,ADV,rx7267,Caremark,Commercial
+4336,ADV,RX7267,Caremark,Commercial
+4336,ADV,RX7326,Caremark,Commercial
+4336,ADV,RX7341,Caremark,Commercial
+4336,ADV,RX7363,Caremark,Commercial
+4336,ADV,rx7363,Caremark,Commercial
+4336,ADV,RX7380,Caremark,Commercial
+4336,ADV,RX7381,Caremark,Commercial
+4336,ADV,RX7383,Caremark,Commercial
+4336,ADV,RX7384,Caremark,Commercial
+4336,ADV,RX7391,Caremark,Commercial
+4336,ADV,rx7391,Caremark,Commercial
+4336,ADV,RX7406,Caremark,Commercial
+4336,ADV,RX7434,Caremark,Commercial
+4336,ADV,RX7465,Caremark,Commercial
+4336,ADV,RX7474,Caremark,Commercial
+4336,ADV,RX7511,Caremark,Commercial
+4336,ADV,RX7529,Caremark,Commercial
+4336,ADV,RX7542,Caremark,Commercial
+4336,ADV,RX7546,Caremark,Commercial
+4336,ADV,RX7640,Caremark,Commercial
+4336,ADV,RX7642,Caremark,Commercial
+4336,ADV,RX7669,Caremark,Commercial
+4336,ADV,RX7682,Caremark,Commercial
+4336,ADV,rx7682,Caremark,Commercial
+4336,ADV,RX7866,Caremark,Commercial
+4336,ADV,RX7873,Caremark,Commercial
+4336,ADV,RX8715,Caremark,Commercial
+4336,ADV,,Caremark,Commercial
+4336,MCAIDADV,RX3892,Caremark,Commercial
+4336,MCAIDADV,rx8895,Caremark,Commercial
+4336,MCAIDADV,RX8895,Caremark,Commercial
+4336,MEDDADV,788257,Caremark,Commercial
+4336,MEDDADV,RX1110,Caremark,Commercial
+4336,MEDDADV,RX7117,Caremark,Commercial
+4336,MEDDADV,rx7117,Caremark,Commercial
+4336,MEDDADV,RX8556,Caremark,Commercial
+4336,MEDDADV,rx8556,Caremark,Commercial
+4336,MEDDADV,RX8585,Caremark,Commercial
+4336,MEDDADV,rx8712,Caremark,Commercial
+4336,MEDDADV,RX8712,Caremark,Commercial
+4336,MEDDADV,RXCVSD,Caremark,Commercial
+4336,MEDDADV,rxcvsd,Caremark,Commercial
+4336,MPPPOR,RX8556,Caremark,Commercial
+4336,RXCVSD,788257,Caremark,Commercial
+4336,RXCVSD,RX1110,Caremark,Commercial
+4336,RXCVSD,rx1110,Caremark,Commercial
+4336,RXCVSD,RX8541,Caremark,Commercial
+4336,RXCVSD,RX8556,Caremark,Commercial
+4336,RXCVSD,rx8556,Caremark,Commercial
+4336,RXCVSD,rx8585,Caremark,Commercial
+4336,RXCVSD,RX8712,Caremark,Commercial
+4336,RXCVSD,RXCVSD,Caremark,Commercial
+4336,RXCVSD,rxcvsd,Caremark,Commercial
+4336,RXCVSD,,Caremark,Commercial
+4336,,RX23GJ,Caremark,Commercial
+,CN,4682,Optum,Commercial
+4682,CN,ec15701139,Optum,Commercial
+4682,cn,EC15701139,Optum,coupon
+4682,CN,EC15701147,Optum,coupon
+4682,CN,ec15701147,Optum,coupon
+4682,CN,EC40401040,Optum,coupon
+4682,CN,ec40401040,Optum,coupon
+4682,CN,EC48004030,Optum,coupon
+4682,CN,ec48004030,Optum,coupon
+4682,CN,EC48006034,Optum,coupon
+4682,CN,EC48017020,Optum,coupon
+4682,CN,ec48017020,Optum,coupon
+4682,CN,ec51001069,Optum,coupon
+4682,CN,EC51001069,Optum,coupon
+4682,CN,EC57009064,Optum,coupon
+4682,CN,EC57023104,Optum,coupon
+4682,CN,EC57047006,Optum,coupon
+4682,CN,ec57047006,Optum,coupon
+4682,CN,ec94012035,Optum,coupon
+4682,CN,ec94012035,Optum,coupon
+4682,CN,ECNUVESSA1,Optum,coupon
+4682,CN,ecnuvessa1,Optum,coupon
+4682,CN,ECSLYACQ01,Optum,coupon
+4682,CN,ecslynd,Optum,coupon
+4682,CN,ECSLYND,Optum,coupon
+4682,CN,ECSLYND1,Optum,coupon
+4682,CN,ecslynd1,Optum,coupon
+4682,CN,ECSLYNDHT,Optum,coupon
+4682,CN,ECSLYRTN01,Optum,coupon
+4682,CN,ectyblume1,Optum,coupon
+4682,CN,ECTYBLUME1,Optum,coupon
+4682,CN,ECVITAFOL,Optum,coupon
+4682,CN,ecvitafol,Optum,coupon
+4682,CN,ecvitafol1,Optum,coupon
+4682,CN,ECVITAFOL1,Optum,coupon
+4682,CN,EL57006478,Optum,coupon
+4682,CN,wcseb4101,Optum,coupon
+4682,CN,WCZTL5001,Optum,coupon
+4682,CN,WCZTL5002,Optum,coupon
+4740,,,Optum,coupon
+4766,COM SELECT,100hc-0024,Caremark,Commercial
+4766,COM SELECT,horizon,Caremark,Commercial
+4766,COM SELECT,,Caremark,Commercial
+4766,USFLU,,Caremark,Commercial
+4915,HUN,8317356201,Caremark,Commercial
+5285,ACB,5000194501,Caremark,Commercial
+5285,ACB,6000115001,Caremark,Commercial
+5377,10000019,2,MaxorPlus,Commercial
+5377,10000019,2301,MaxorPlus,Commercial
+5377,10000019,3,MaxorPlus,Commercial
+5377,10000019,781503,MaxorPlus,Commercial
+5377,10000019,WESTL,MaxorPlus,Commercial
+5947,CLAIMCR,GILEAD,Optum,coupon
+600426,54,ec11922001,Optum,coupon
+600426,54,ec14704002,Optum,coupon
+600426,54,EC15401125,Optum,coupon
+600426,54,EC15409001,Optum,coupon
+600426,54,EC15412002,Optum,coupon
+600426,54,EC16006001,Optum,coupon
+600426,54,EC20014001,Optum,coupon
+600426,54,EC30015001,Optum,coupon
+600426,54,EC39201014,Optum,coupon
+600426,54,ec45401001,Optum,coupon
+600426,54,ec46101001,Optum,coupon
+600426,54,EC46101001,Optum,coupon
+600426,54,ec51025009,Optum,coupon
+600426,54,EC51032002,Optum,coupon
+600426,54,ec51034002,Optum,coupon
+600426,54,EC51034002,Optum,coupon
+600426,54,ec57010087,optum,coupon
+600426,54,EC57038009,optum,coupon
+600426,54,EC57047006,optum,coupon
+600426,54,ECTYBLUME1,optum,coupon
+600426,54,ectyblume1,optum,coupon
+600428,6780000,6780011,Express Scripts,coupon
+600428,6780000,6780029,Express Scripts,coupon
+600428,6780000,6780032,Express Scripts,coupon
+600471,55101202,X10260,optum,coupon
+600471,55101202,x10260,optum,coupon
+600471,7777,26EH,optum,coupon
+600471,7777,26MB,optum,coupon
+600471,7777,26NJ,optum,coupon
+601341,OHCP,OH1602031,Opus Health,coupon
+601341,OHCP,OH1903011,Opus Health,coupon
+601341,OHCP,oh1903011,Opus Health,coupon
+601341,OHCP,oh2602011,Opus Health,coupon
+601341,OHCP,OH5502061,Opus Health,coupon
+601341,OHCP,OH6708011,Opus Health,coupon
+601341,OHCP,OH6709011,Opus Health,coupon
+601341,OHCP,OH6709021,Opus Health,coupon
+601341,OHCP,OH6710021,Opus Health,coupon
+601341,OHCP,OH6811011,Opus Health,coupon
+601341,OHCP,OH7143111,Opus Health,coupon
+601341,OHCP,OH7143161,Opus Health,coupon
+601341,OHCP,OH7712021,Opus Health,coupon
+601341,OHCP,oh7715241,Opus Health,coupon
+601341,OHCP,OH7715251,Opus Health,coupon
+601341,OHCP,OH7753021,Opus Health,coupon
+601341,OHCP,oh7753021,Opus Health,coupon
+601341,OHCP,OH9008131,Opus Health,coupon
+601341,OHCP,OH9008141,Opus Health,coupon
+601341,OHCP,OH9010121,Opus Health,coupon
+601341,OHCP,OH9015011,Opus Health,coupon
+601341,OHCP,oh9015011,Opus Health,coupon
+601341,OHCP,OH9024041,Opus Health,coupon
+601341,OHS,OH6504161,Opus Health,coupon
+601341,OHS,OH7143111,Opus Health,coupon
+601341,OHS,oh7143151,Opus Health,coupon
+601341,OHS,OH7143151,Opus Health,coupon
+601341,OHS,OH7143161,Opus Health,coupon
+601341,OHS,oh7143161,Opus Health,coupon
+601341,OHS,OH7731011,Opus Health,coupon
+601341,OHS,OH7753021,Opus Health,coupon
+601341,,OH7731011,Opus Health,coupon
+601341,,OH9008141,Opus Health,coupon
+603017,BAZ  HUN,41333,Caremark,Commercial
+6053,MSC,4051,coupon,coupon
+6053,MSC,8604,coupon,coupon
+6053,MSC,PHSPP6,coupon,coupon
+6053,MSC,TVPPPR5,coupon,coupon
+6053,MSC,z3,coupon,coupon
+610011,CTRXMEDD,32BJRX,optum,Medicare
+610011,CTRXMEDD,32bjrx,optum,Medicare
+610011,CTRXMEDD,CONNECTIVE,optum,Medicare
+610011,CTRXMEDD,CSGMDPDPV,optum,Medicare
+610011,CTRXMEDD,csgmdpdpv,optum,Medicare
+610011,CTRXMEDD,EGWPS037,optum,Medicare
+610011,CTRXMEDD,GRATE,optum,Medicare
+610011,CTRXMEDD,grate,optum,Medicare
+610011,CTRXMEDD,HMH,optum,Medicare
+610011,CTRXMEDD,HT1HNMC21,optum,Medicare
+610011,CTRXMEDD,HZRX,optum,Medicare
+610011,CTRXMEDD,MDCMEDDNJ,optum,Medicare
+610011,CTRXMEDD,MTWMOSAIC,optum,Medicare
+610011,CTRXMEDD,NEIMAN,optum,Medicare
+610011,CTRXMEDD,PRIMEHC,optum,Medicare
+610011,CTRXMEDD,PURCSHP,optum,Medicare
+610011,CTRXMEDD,SDGW20,optum,Medicare
+610011,CTRXMEDD,SJEWEL,optum,Medicare
+610011,CTRXMEDD,SONJCOM,optum,Medicare
+610011,CTRXMEDD,,optum,Medicare
+610011,DATAUNVAIL,BCBSMRX1,optum,Commercial
+610011,HPHC,*,optum,Commercial
+610011,IRX,32BJRX,optum,Commercial
+610011,IRX,32bjrx,optum,Commercial
+610011,IRX,AHEARDENT,optum,Commercial
+610011,IRX,AHSRX,optum,Commercial
+610011,IRX,AXIAWG,optum,Commercial
+610011,IRX,BB1RX,optum,Commercial
+610011,IRX,BCBSMRX1,optum,Commercial
+610011,IRX,bcbsmrx1,optum,Commercial
+610011,IRX,BNPPRX,optum,Commercial
+610011,IRX,CMGRX,optum,Commercial
+610011,IRX,CNBH,optum,Commercial
+610011,IRX,CONSTELLATION,optum,Commercial
+610011,IRX,CROWDSTRIKE,optum,Commercial
+610011,IRX,ct1rele20,optum,Commercial
+610011,IRX,CT1UWHC22,optum,Commercial
+610011,IRX,DORMAN,optum,Commercial
+610011,IRX,EMMESRX,optum,Commercial
+610011,IRX,ESLUXC,optum,Commercial
+610011,IRX,fdxfedex1,optum,Commercial
+610011,IRX,FEDEX,optum,Commercial
+610011,IRX,GRATE,optum,Commercial
+610011,IRX,HIGHGREDU,optum,Commercial
+610011,IRX,HMH,optum,Commercial
+610011,IRX,HMNA,optum,Commercial
+610011,IRX,HT1HNMC21,optum,Commercial
+610011,IRX,IUOE825,optum,Commercial
+610011,IRX,JJSNACK,optum,Commercial
+610011,IRX,JOHNMUIR,optum,Commercial
+610011,IRX,MiBCNRX,optum,Commercial
+610011,IRX,mibcnrx,optum,Commercial
+610011,IRX,MTWMOSAIC,optum,Commercial
+610011,IRX,NARASIWF,optum,Commercial
+610011,IRX,NEIMAN,optum,Commercial
+610011,IRX,NFIND,optum,Commercial
+610011,IRX,NNJTBP,optum,Commercial
+610011,IRX,OMNICOM,optum,Commercial
+610011,IRX,PGHPYRGLB,optum,Commercial
+610011,IRX,PRIMEHC,optum,Commercial
+610011,IRX,PURYU,optum,Commercial
+610011,IRX,RESRPBLCS,optum,Commercial
+610011,IRX,RLCHMY,optum,Commercial
+610011,IRX,RRW0000,optum,Commercial
+610011,IRX,RXBENEFIT,optum,Commercial
+610011,IRX,RXBENHOSP,optum,Commercial
+610011,IRX,RXMCDMA,optum,Commercial
+610011,IRX,SAKSRX,optum,Commercial
+610011,IRX,SITEONE,optum,Commercial
+610011,IRX,SJEWEL,optum,Commercial
+610011,IRX,SLTEMO,optum,Commercial
+610011,IRX,SLTKLI,optum,Commercial
+610011,IRX,SONJCOM,optum,Commercial
+610011,IRX,sonjcom,optum,Commercial
+610011,IRX,SRCARE,optum,Commercial
+610011,IRX,TNYHT,optum,Commercial
+610011,IRX,TPUTAKEDA,optum,Commercial
+610011,IRX,UKG,optum,Commercial
+610011,IRX,USRS,optum,Commercial
+610011,IRX,WALMART,optum,Commercial
+610011,IRX,,optum,Commercial
+610014,40,RXBIMBP,Express Scripts,Commercial
+610014,430,BCWAPDP,Express Scripts,Medicare
+610014,A4,MBENZRX,Express Scripts,Commercial
+610014,COBSEG,1199rx,Express Scripts,Commercial
+610014,COBSEG,DISNEYRX,Express Scripts,Commercial
+610014,COBSEG,NJTCPRX,Express Scripts,Commercial
+610014,COBSEG,uwmm810,Express Scripts,Commercial
+610014,COPAY,MMODRUG,Express Scripts,Commercial
+610014,COPAY,UTSYSRX,Express Scripts,Commercial
+610014,HEL,SANOFIRX,Express Scripts,coupon
+610014,HUN,APWU000,Express Scripts,Commercial
+610014,HUN,JJRXCOV,Express Scripts,Commercial
+610014,HUN,jjrxcov,Express Scripts,Commercial
+610014,HUN,uftwfrx,Express Scripts,Commercial
+610014,MEDDCOPAY,APWU000,Express Scripts,Medicare
+610014,MEDDPRIME,1199RX,Express Scripts,Medicare
+610014,MEDDPRIME,2FFA,Express Scripts,Medicare
+610014,MEDDPRIME,2ffa,Express Scripts,Medicare
+610014,MEDDPRIME,2FGA,Express Scripts,Medicare
+610014,MEDDPRIME,2fga,Express Scripts,Medicare
+610014,MEDDPRIME,93K8RX1,Express Scripts,Medicare
+610014,MEDDPRIME,95C8EGWP,Express Scripts,Medicare
+610014,MEDDPRIME,AC20029003,Express Scripts,Medicare
+610014,MEDDPRIME,AV20019005,Express Scripts,Medicare
+610014,MEDDPRIME,bergen1,Express Scripts,Medicare
+610014,MEDDPRIME,BERGEN1,Express Scripts,Medicare
+610014,MEDDPRIME,BXMA,Express Scripts,Medicare
+610014,MEDDPRIME,EC20014001,Express Scripts,Medicare
+610014,MEDDPRIME,EC48006034,Express Scripts,Medicare
+610014,MEDDPRIME,EHAUFP4,Express Scripts,Medicare
+610014,MEDDPRIME,EHMCRXS,Express Scripts,Medicare
+610014,MEDDPRIME,JCPSRX1,Express Scripts,Medicare
+610014,MEDDPRIME,JGRA,Express Scripts,Medicare
+610014,MEDDPRIME,jmpa,Express Scripts,Medicare
+610014,MEDDPRIME,JMPA,Express Scripts,Medicare
+610014,MEDDPRIME,K8NA,Express Scripts,Medicare
+610014,MEDDPRIME,KL9A,Express Scripts,Medicare
+610014,MEDDPRIME,KRQA,Express Scripts,Medicare
+610014,MEDDPRIME,MOMAHADX,Express Scripts,Medicare
+610014,MEDDPRIME,NJSTATE,Express Scripts,Medicare
+610014,MEDDPRIME,NJTCPRX,Express Scripts,Medicare
+610014,MEDDPRIME,NJTEGWP,Express Scripts,Medicare
+610014,MEDDPRIME,PHBPEWP,Express Scripts,Medicare
+610014,MEDDPRIME,RXBCITR,Express Scripts,Medicare
+610014,MEDDPRIME,UFTWFRX,Express Scripts,Medicare
+610014,MEDDPRIME,VZNUMBX,Express Scripts,Medicare
+610014,MEDDPRIME,WGHIFRX,Express Scripts,Medicare
+610014,MEDDPRIME,,Express Scripts,Medicare
+610014,NCP99,NYDCC01,Express Scripts,Commercial
+610014,NCP99,PSEGRX,Express Scripts,Commercial
+610014,NCP99,rxbwawa,Express Scripts,Commercial
+610014,PEU,1199RX,Express Scripts,Commercial
+610014,PEU,2497,Express Scripts,Commercial
+610014,PEU,35242RX,Express Scripts,Commercial
+610014,PEU,adp1000,Express Scripts,Commercial
+610014,PEU,ADP1000,Express Scripts,Commercial
+610014,PEU,AMGENRX,Express Scripts,Commercial
+610014,PEU,APNA,Express Scripts,Commercial
+610014,PEU,apw95b4,Express Scripts,Commercial
+610014,PEU,APWU000,Express Scripts,Commercial
+610014,PEU,ASM00RX,Express Scripts,Commercial
+610014,PEU,AVAGORX,Express Scripts,Commercial
+610014,PEU,AZPHARM,Express Scripts,Commercial
+610014,PEU,bcwapdp,Express Scripts,Commercial
+610014,PEU,BERGEN1,Express Scripts,Commercial
+610014,PEU,BERRX4U,Express Scripts,Commercial
+610014,PEU,BLKRKRX,Express Scripts,Commercial
+610014,PEU,BMOFGRX,Express Scripts,Commercial
+610014,PEU,CACIRXS,Express Scripts,Commercial
+610014,PEU,chuBBRX,Express Scripts,Commercial
+610014,PEU,CHUBBRX,Express Scripts,Commercial
+610014,PEU,CIGPS0000737747,Express Scripts,Commercial
+610014,PEU,CIGUG0000624295,Express Scripts,Commercial
+610014,PEU,CIGUG0000637726,Express Scripts,Commercial
+610014,PEU,CIGUG0000639213,Express Scripts,Commercial
+610014,PEU,CIGUG0003153616,Express Scripts,Commercial
+610014,PEU,CIGUG0003338621,Express Scripts,Commercial
+610014,PEU,CIGUG0003344327,Express Scripts,Commercial
+610014,PEU,CIGUG0003345625,Express Scripts,Commercial
+610014,PEU,CMEGRP1,Express Scripts,Commercial
+610014,PEU,DHLDRUG,Express Scripts,Commercial
+610014,PEU,DIAGEO1,Express Scripts,Commercial
+610014,PEU,DZSOCRX,Express Scripts,Commercial
+610014,PEU,EHMCRXS,Express Scripts,Commercial
+610014,PEU,ENERGY1,Express Scripts,Commercial
+610014,PEU,EPISCPL,Express Scripts,Commercial
+610014,PEU,ETSRX00,Express Scripts,Commercial
+610014,PEU,FIRMRX1,Express Scripts,Commercial
+610014,PEU,FMCRX06,Express Scripts,Commercial
+610014,PEU,GAFMCRX,Express Scripts,Commercial
+610014,PEU,GROUPRX,Express Scripts,Commercial
+610014,PEU,HMRK001,Express Scripts,Commercial
+610014,PEU,IKEAUSA,Express Scripts,Commercial
+610014,PEU,JCPSRX1,Express Scripts,Commercial
+610014,PEU,jcpsrx1,Express Scripts,Commercial
+610014,PEU,jjrxcov,Express Scripts,Commercial
+610014,PEU,JJRXCOV,Express Scripts,Commercial
+610014,PEU,JUTA,Express Scripts,Commercial
+610014,PEU,JYSA,Express Scripts,Commercial
+610014,PEU,LEHBRXS,Express Scripts,Commercial
+610014,PEU,LNERX01,Express Scripts,Commercial
+610014,PEU,LOCAL74,Express Scripts,Commercial
+16499,HZRX,003295W0000,Horizon,Commercial
+16499,HZRX,003487D0001,Horizon,Commercial
+16499,HZRX,003571D0000,Horizon,Commercial
+16499,HZRX,00357L40000,Horizon,Commercial
+16499,HZRX,00364R30001,Horizon,Commercial
+16499,HZRX,003672Q0000,Horizon,Commercial
+16499,HZRX,003744X0000,Horizon,Commercial
+16499,HZRX,00381W50002,Horizon,Commercial
+16499,HZRX,00382L30004,Horizon,Commercial
+16499,HZRX,004024T0000,Horizon,Commercial
+16499,HZRX,004101R0000,Horizon,Commercial
+16499,HZRX,00423Q00000,Horizon,Commercial
+16499,HZRX,00443O40001,Horizon,Commercial
+16499,HZRX,00454Q50000,Horizon,Commercial
+16499,HZRX,00465X90000,Horizon,Commercial
+16499,HZRX,00501Z40004,Horizon,Commercial
+16499,HZRX,005084R0001,Horizon,Commercial
+16499,HZRX,00508X10000,Horizon,Commercial
+16499,HZRX,005308W0000,Horizon,Commercial
+16499,HZRX,00575G20003,Horizon,Commercial
+16499,HZRX,005825H0000,Horizon,Commercial
+16499,HZRX,00592N10000,Horizon,Commercial
+16499,HZRX,005977J0001,Horizon,Commercial
+16499,HZRX,006092J0001,Horizon,Commercial
+16499,HZRX,00626D00000,Horizon,Commercial
+16499,HZRX,006294Q0000,Horizon,Commercial
+16499,HZRX,006302R0000,Horizon,Commercial
+16499,HZRX,006347A0000,Horizon,Commercial
+16499,HZRX,00642E20001,Horizon,Commercial
+16499,HZRX,00645P60004,Horizon,Commercial
+16499,HZRX,008015K0000,Horizon,Commercial
+16499,HZRX,00802M10050,Horizon,Commercial
+16499,HZRX,00802N80050,Horizon,Commercial
+16499,HZRX,008034L0080,Horizon,Commercial
+16499,HZRX,008037K0060,Horizon,Commercial
+16499,HZRX,00803F80050,Horizon,Commercial
+16499,HZRX,00803L80050,Horizon,Commercial
+16499,HZRX,008043T0080,Horizon,Commercial
+16499,HZRX,008044Z0050,Horizon,Commercial
+16499,HZRX,00804Q60050,Horizon,Commercial
+16499,HZRX,008053S0080,Horizon,Commercial
+16499,HZRX,008055H0000,Horizon,Commercial
+16499,HZRX,008056K0050,Horizon,Commercial
+16499,HZRX,008058Z0060,Horizon,Commercial
+16499,HZRX,00805A30080,Horizon,Commercial
+16499,HZRX,00805F80060,Horizon,Commercial
+16499,HZRX,00805T50060,Horizon,Commercial
+16499,HZRX,008502F0052,Horizon,Commercial
+16499,HZRX,008503S0001,Horizon,Commercial
+16499,HZRX,008505J0040,Horizon,Commercial
+16499,HZRX,008506R0050,Horizon,Commercial
+16499,HZRX,008508W0030,Horizon,Commercial
+16499,HZRX,008508Y0000,Horizon,Commercial
+16499,HZRX,008513J0020,Horizon,Commercial
+16499,HZRX,008513S0000,Horizon,Commercial
+16499,HZRX,008515A0000,Horizon,Commercial
+16499,HZRX,008515G0000,Horizon,Commercial
+16499,HZRX,008515M0026,Horizon,Commercial
+16499,HZRX,008515S0000,Horizon,Commercial
+16499,HZRX,008515Y0020,Horizon,Commercial
+16499,HZRX,008516J0010,Horizon,Commercial
+16499,HZRX,008516R0020,Horizon,Commercial
+16499,HZRX,008516U0010,Horizon,Commercial
+16499,HZRX,008517A0000,Horizon,Commercial
+16499,HZRX,008517B0052,Horizon,Commercial
+16499,HZRX,008517G0000,Horizon,Commercial
+16499,HZRX,008517G0020,Horizon,Commercial
+16499,HZRX,008517N0000,Horizon,Commercial
+16499,HZRX,008517V0000,Horizon,Commercial
+16499,HZRX,00851C40050,Horizon,Commercial
+16499,HZRX,00851X10000,Horizon,Commercial
+16499,HZRX,00851Y90060,Horizon,Commercial
+16499,HZRX,00851Z30080,Horizon,Commercial
+16499,HZRX,00852A50060,Horizon,Commercial
+16499,HZRX,008701D0001,Horizon,Commercial
+16499,HZRX,008701U0000,Horizon,Commercial
+16499,HZRX,0100HC0022,Horizon,Commercial
+16499,HZRX,0100HC0023,Horizon,Commercial
+16499,HZRX,0181g80001,Horizon,Commercial
+16499,HZRX,02027M0000,Horizon,Commercial
+16499,HZRX,02195M00001,Horizon,Commercial
+16499,HZRX,0527A80000,Horizon,Commercial
+16499,HZRX,08511z0080,Horizon,Commercial
+16499,HZRX,08512W0010,Horizon,Commercial
+16499,HZRX,0NG00010178,Horizon,Commercial
+16499,HZRX,0NG00010272,Horizon,Commercial
+16499,HZRX,0NG00010279,Horizon,Commercial
+16499,HZRX,0NG00010336,Horizon,Commercial
+16499,HZRX,0NG00010495,Horizon,Commercial
+16499,HZRX,0NG00010513,Horizon,Commercial
+16499,HZRX,0ng0010279,Horizon,Commercial
+16499,HZRX,100hc-0024,Horizon,Commercial
+16499,HZRX,100HC-0024,Horizon,Commercial
+16499,HZRX,100hc-0025,Horizon,Commercial
+16499,HZRX,100HC-0025,Horizon,Commercial
+16499,HZRX,100hc-0026,Horizon,Commercial
+16499,HZRX,100HC0024,Horizon,Commercial
+16499,HZRX,100hc0024,Horizon,Commercial
+16499,HZRX,113980078,Horizon,Commercial
+16499,HZRX,243780000,Horizon,Commercial
+16499,HZRX,2GDA,Horizon,Commercial
+16499,HZRX,332580000,Horizon,Commercial
+16499,HZRX,5103,Horizon,Commercial
+16499,HZRX,7.577E+11,Horizon,Commercial
+16499,HZRX,7.5888E+11,Horizon,Commercial
+16499,HZRX,7.5965E+11,Horizon,Commercial
+16499,HZRX,7.5968E+11,Horizon,Commercial
+16499,HZRX,7.5968E+11,Horizon,Commercial
+16499,HZRX,7.598E+11,Horizon,Commercial
+16499,HZRX,7.6052E+11,Horizon,Commercial
+16499,HZRX,7.6077E+11,Horizon,Commercial
+16499,HZRX,7.6077E+11,Horizon,Commercial
+16499,HZRX,7607770008,Horizon,Commercial
+16499,HZRX,7.6081E+11,Horizon,Commercial
+16499,HZRX,7.6095E+11,Horizon,Commercial
+16499,HZRX,761760020,Horizon,Commercial
+16499,HZRX,7.6176E+11,Horizon,Commercial
+16499,HZRX,7.6176E+11,Horizon,Commercial
+16499,HZRX,7.6176E+11,Horizon,Commercial
+16499,HZRX,7.6181E+11,Horizon,Commercial
+16499,HZRX,7.6181E+11,Horizon,Commercial
+16499,HZRX,7.6251E+11,Horizon,Commercial
+16499,HZRX,7.6252E+11,Horizon,Commercial
+16499,HZRX,7.6252E+11,Horizon,Commercial
+16499,HZRX,7.6314E+11,Horizon,Commercial
+16499,HZRX,7.6314E+11,Horizon,Commercial
+16499,HZRX,7.6336E+11,Horizon,Commercial
+16499,HZRX,7.6354E+11,Horizon,Commercial
+16499,HZRX,7.6369E+11,Horizon,Commercial
+16499,HZRX,8.05E+53,Horizon,Commercial
+16499,HZRX,803080020,Horizon,Commercial
+16499,HZRX,804060000,Horizon,Commercial
+16499,HZRX,807260056,Horizon,Commercial
+16499,HZRX,820860050,Horizon,Commercial
+16499,HZRX,827740040,Horizon,Commercial
+16499,HZRX,851280050,Horizon,Commercial
+16499,HZRX,851740060,Horizon,Commercial
+16499,HZRX,851950042,Horizon,Commercial
+16499,HZRX,851950053,Horizon,Commercial
+16499,HZRX,856600000,Horizon,Commercial
+16499,HZRX,857880003,Horizon,Commercial
+16499,HZRX,858200050,Horizon,Commercial
+16499,HZRX,859440045,Horizon,Commercial
+16499,HZRX,859960025,Horizon,Commercial
+16499,HZRX,862640080,Horizon,Commercial
+16499,HZRX,863220050,Horizon,Commercial
+16499,HZRX,865380000,Horizon,Commercial
+16499,HZRX,865670015,Horizon,Commercial
+16499,HZRX,870120000,Horizon,Commercial
+16499,HZRX,hzrx,Horizon,Commercial
+16499,HZRX,HZRX,Horizon,Commercial
+16499,HZRX,,Horizon,Commercial
+16499,PDPNJ,RXHRZN,Horizon,Medicare
+16499,PDPNJ,rxhrzn,Horizon,Medicare
+16499,PPOBH,00682j10000,Horizon,Medicare
+16499,PPOBH,RXBRVN,Horizon,Medicare
+17010,0215COMM,3174704,Express Scripts,Commercial
+17010,0215COMM,3333849,Express Scripts,Commercial
+17010,0215COMM,3341475,Express Scripts,Commercial
+17010,0215COMM,3342407,Express Scripts,Commercial
+17010,0215COMM,3345209,Express Scripts,Commercial
+17010,0215COMM,654324,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000183115,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000631393,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000634535,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000636876,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000636932,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000650793,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000650949,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000651473,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000653664,Express Scripts,Commercial
+17010,0215COMM,CIGUG0000654324,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002498903,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002498950,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002499638,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002499895,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002500780,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002500962,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002501995,Express Scripts,Commercial
+17010,0215COMM,CIGUG0002502056,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003153616,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003174704,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003189952,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003207232,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003208528,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003209304,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003209376,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003209592,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003210428,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003210932,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003211416,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003211568,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003215660,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003311716,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003315248,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003328213,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003329743,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003330209,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003330211,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003331040,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003332042,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003332215,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003332577,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003335011,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003335047,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003335115,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003335142,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336161,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336412,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336431,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336804,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003336878,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003337552,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003338034,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003338464,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003338621,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003339129,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003339522,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003339532,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003339988,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003340655,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003340790,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003340945,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341386,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341442,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341475,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341512,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341649,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003341877,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342057,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342102,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342246,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342314,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342407,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003342968,Express Scripts,Commercial
+610014,PEU,MDIAOCN,Express Scripts,Commercial
+610014,PEU,MONTERX,Express Scripts,Commercial
+610014,PEU,MORSTAN,Express Scripts,Commercial
+610014,PEU,njstate,Express Scripts,Commercial
+610014,PEU,njtcprx,Express Scripts,Commercial
+610014,PEU,NJTCPRX,Express Scripts,Commercial
+610014,PEU,NYDCC01,Express Scripts,Commercial
+610014,PEU,OWENSRX1,Express Scripts,Commercial
+610014,PEU,PBS025079030010,Express Scripts,Commercial
+610014,PEU,PEPSIRX,Express Scripts,Commercial
+610014,PEU,PHILCRP,Express Scripts,Commercial
+610014,PEU,PSEGRX,Express Scripts,Commercial
+610014,PEU,PWCPLAN,Express Scripts,Commercial
+610014,PEU,pwcplan,Express Scripts,Commercial
+610014,PEU,RADIAN1,Express Scripts,Commercial
+610014,PEU,RBCUSRX,Express Scripts,Commercial
+610014,PEU,RF00004,Express Scripts,Commercial
+610014,PEU,RSMRX4U,Express Scripts,Commercial
+610014,PEU,RXBARCG,Express Scripts,Commercial
+610014,PEU,RXBBEEN,Express Scripts,Commercial
+610014,PEU,RXBCEOR,Express Scripts,Commercial
+610014,PEU,RXBCOMU,Express Scripts,Commercial
+610014,PEU,RXBDERB,Express Scripts,Commercial
+610014,PEU,RXBGCIA,Express Scripts,Commercial
+610014,PEU,RXBGECO,Express Scripts,Commercial
+610014,PEU,RXBLANS,Express Scripts,Commercial
+610014,PEU,RXBLRHS,Express Scripts,Commercial
+610014,PEU,RXBPIAI,Express Scripts,Commercial
+610014,PEU,RXBVERI,Express Scripts,Commercial
+610014,PEU,RXBWAWA,Express Scripts,Commercial
+610014,PEU,RXBWILG,Express Scripts,Commercial
+610014,PEU,RXDFSEP,Express Scripts,Commercial
+610014,PEU,SANOFIRX,Express Scripts,Commercial
+610014,PEU,SBHOSP,Express Scripts,Commercial
+610014,PEU,SELMEDRX,Express Scripts,Commercial
+610014,PEU,SICARX1,Express Scripts,Commercial
+610014,PEU,SLVARMY,Express Scripts,Commercial
+610014,PEU,SONJCOM,Express Scripts,Commercial
+610014,PEU,SONYINC,Express Scripts,Commercial
+610014,PEU,SSDLLP1,Express Scripts,Commercial
+610014,PEU,SSEU371,Express Scripts,Commercial
+610014,PEU,STEAM01,Express Scripts,Commercial
+610014,PEU,TRIMBLE,Express Scripts,Commercial
+610014,PEU,TROWEPR,Express Scripts,Commercial
+610014,PEU,TTINARX,Express Scripts,Commercial
+610014,PEU,UFTWFRX,Express Scripts,Commercial
+610014,PEU,UMBPHBP,Express Scripts,Commercial
+610014,PEU,UNISYS1,Express Scripts,Commercial
+610014,PEU,VERIZON,Express Scripts,Commercial
+610014,PEU,VOLVORX,Express Scripts,Commercial
+610014,PEU,WGHIFRX,Express Scripts,Commercial
+610014,PEU,wgm0001,Express Scripts,Commercial
+610014,PEU,ZURNARX,Express Scripts,Commercial
+610014,PEU,,Express Scripts,Commercial
+610014,PEU1122,PHILCRP,Express Scripts,Commercial
+610014,VDZ,l4sa,Express Scripts,Commercial
+610014,VDZ,rxbceor,Express Scripts,Commercial
+610014,ZDZ,2986199A,Express Scripts,Commercial
+610014,ZDZ,BCWAPDP,Express Scripts,Medicare
+610014,ZDZ,CHUBBRX,Express Scripts,Commercial
+610014,ZDZ,nwrkboe,Express Scripts,Commercial
+610014,ZDZ,NWRKBOE,Express Scripts,Commercial
+610014,ZDZ,PSEGRX,Express Scripts,Commercial
+610014,,1XS000000522939,Express Scripts,Commercial
+610014,,A400083HRA1,Express Scripts,Commercial
+610014,,APWU000,Express Scripts,Commercial
+610014,,AQLA,Express Scripts,Commercial
+610014,,ASHRX01,Express Scripts,Commercial
+610014,,BCWAPDP,Express Scripts,Medicare
+610014,,bcwapdp,Express Scripts,Commercial
+610014,,CBSRX18,Express Scripts,Commercial
+610014,,CFBA,Express Scripts,Commercial
+610014,,CIGPS0000721419,Express Scripts,Commercial
+610014,,CIGUG0000183115,Express Scripts,Commercial
+610014,,CIGUG0000618373,Express Scripts,Commercial
+610014,,CIGUG0000627737,Express Scripts,Commercial
+610014,,CIGUG0000631719,Express Scripts,Commercial
+610014,,CIGUG0000636932,Express Scripts,Commercial
+610014,,CIGUG0002499638,Express Scripts,Commercial
+610014,,CIGUG0003330209,Express Scripts,Commercial
+610014,,CIGUG0003335011,Express Scripts,Commercial
+610014,,CIGUG0003336711,Express Scripts,Commercial
+610014,,CIGUG0003338034,Express Scripts,Commercial
+610014,,CIGUG0003341386,Express Scripts,Commercial
+610014,,CIGUG0003342407,Express Scripts,Commercial
+610014,,CIGUG0003343230,Express Scripts,Commercial
+610014,,CIGUG0003343611,Express Scripts,Commercial
+610014,,CIGUG0003344619,Express Scripts,Commercial
+610014,,HMRK001,Express Scripts,Commercial
+610014,,JCPSESA1ACT,Express Scripts,Commercial
+610014,,JCPSRX1,Express Scripts,Commercial
+610014,,KHXA,Express Scripts,Commercial
+610014,,KPMA,Express Scripts,Commercial
+610014,,L4JA,Express Scripts,Commercial
+610014,,LEHIGHU,Express Scripts,Commercial
+610014,,mbenzrx,Express Scripts,Commercial
+610014,,MMCRX99,Express Scripts,Commercial
+610014,,MORSTAN,Express Scripts,Commercial
+610014,,NJTCPRX,Express Scripts,Commercial
+610014,,NR8A,Express Scripts,Commercial
+610014,,NWRKBOE,Express Scripts,Commercial
+610014,,PANA,Express Scripts,Commercial
+610014,,PWCPLAN,Express Scripts,Commercial
+610014,,RBCUSRX,Express Scripts,Commercial
+610014,,TATACON,Express Scripts,Commercial
+610014,,TB8A,Express Scripts,Commercial
+610014,,THENEW1,Express Scripts,Commercial
+610014,,V2UA,Express Scripts,Commercial
+610014,,VERIZON,Express Scripts,Commercial
+610014,,Z9VA,Express Scripts,Commercial
+610014,,,Coupon,Coupon
+610020,ACCESS,99994028,Coupon,Coupon
+610020,ACCESS,99995374,Coupon,Coupon
+610020,ACR,99995019,Coupon,Coupon
+610020,ACR,99995021,Coupon,Coupon
+610020,ACR,99995025,Coupon,Coupon
+610020,ACR,99995039,Coupon,Coupon
+610020,ACR,99995046,Coupon,Coupon
+610020,ACR,99995047,Coupon,Coupon
+610020,ACR,99995048,Coupon,Coupon
+610020,ACR,99995052,Coupon,Coupon
+610020,ACR,99995054,Coupon,Coupon
+610020,HUN,99995427,Coupon,Coupon
+610020,HUN,XARELTO01,Coupon,Coupon
+610020,PDMI,74658002,Coupon,Coupon
+610020,PDMI,74658005,Coupon,Coupon
+610020,PDMI,74658009,Coupon,Coupon
+610020,PDMI,74670002,Coupon,Coupon
+610020,PDMI,74670008,Coupon,Coupon
+610020,PDMI,99990483,Coupon,Coupon
+610020,PDMI,99990941,Coupon,Coupon
+610020,PDMI,99991507,Coupon,Coupon
+610020,PDMI,99991508,Coupon,Coupon
+610020,PDMI,99992546,Coupon,Coupon
+610020,PDMI,99992548,Coupon,Coupon
+610020,PDMI,99993830,Coupon,Coupon
+610020,PDMI,99994026,Coupon,Coupon
+610020,PDMI,99994028,Coupon,Coupon
+610020,PDMI,99994071,Coupon,Coupon
+610020,PDMI,99994205,Coupon,Coupon
+610020,PDMI,99994206,Coupon,Coupon
+610020,PDMI,99994245,Coupon,Coupon
+610020,PDMI,99994373,Coupon,Coupon
+610020,PDMI,99994484,Coupon,Coupon
+610020,PDMI,99994650,Coupon,Coupon
+610020,PDMI,99994651,Coupon,Coupon
+610020,PDMI,99994655,Coupon,Coupon
+610020,PDMI,99994664,Coupon,Coupon
+610020,PDMI,99995215,Coupon,Coupon
+610020,PDMI,99995236,Coupon,Coupon
+610020,PDMI,99995237,Coupon,Coupon
+610020,PDMI,99995238,Coupon,Coupon
+610020,PDMI,99995242,Coupon,Coupon
+610020,PDMI,99995255,Coupon,Coupon
+610020,PDMI,99995257,Coupon,Coupon
+610020,PDMI,99995268,Coupon,Coupon
+610020,PDMI,99995354,Coupon,Coupon
+610020,PDMI,99995374,Coupon,Coupon
+610020,PDMI,99995391,Coupon,Coupon
+610020,PDMI,,Coupon,Coupon
+610020,PXXPDMI,99993830,Coupon,Coupon
+610020,TLDRX,99992541,Coupon,Coupon
+610020,,99992546,Coupon,Coupon
+610020,,99992548,Coupon,Coupon
+610020,,99994071,Coupon,Coupon
+610020,,99994205,Coupon,Coupon
+610020,,99994245,Coupon,Coupon
+610020,,99994296,Coupon,Coupon
+610020,,99994457,Coupon,Coupon
+610020,,99994485,Coupon,Coupon
+610020,,99995391,Coupon,Coupon
+610029,CRK,gskrx,Caremark,Commercial
+610029,CRK,NYUNV,Caremark,Commercial
+610029,CRK,RXNES,Caremark,Commercial
+610029,CRK,RXPNC,Caremark,Commercial
+610029,CRK,,Caremark,Commercial
+610029,,NYUSM,Caremark,Commercial
+610086,HEL,86300060,Coupon,Coupon
+610086,HUN,86300010,Coupon,Coupon
+610086,HUN,86300060,Coupon,Coupon
+610086,HUN,863300010,Coupon,Coupon
+610086,HUN,92481000,Coupon,Coupon
+610086,HUN,94102010,Coupon,Coupon
+610086,HUN,97000136,Coupon,Coupon
+610086,VDZ,77147821,Coupon,Coupon
+610086,,86300020,Coupon,Coupon
+610086,,86300060,Coupon,Coupon
+610086,,94102010,Coupon,Coupon
+610097,9999,CCRX,Caremark,Commercial
+610097,9999,COS,Caremark,Commercial
+610097,9999,cos,Caremark,Commercial
+610097,9999,MPDACUNJ,Optum,Medicaid
+610097,9999,mpdacunj,Optum,Medicare
+610097,9999,MPDCSP,Optum,Medicare
+610097,9999,mpdcsp,Optum,Medicare
+610097,9999,MPDURS,Optum,Medicare
+610097,9999,PDPIND,Optum,Medicare
+610097,9999,pdpind,Optum,Medicare
+610097,9999,PDPLCE1,Optum,Medicare
+610097,9999,pdplce1,Optum,Medicare
+610097,9999,uawm,Optum,Medicare
+610097,9999,,Optum,Medicare
+610097,MPPP,COS,Optum,Medicare
+610127,1960000,1963474,Caremark,Commercial
+610127,1960000,1964230,Caremark,Commercial
+610127,2330000,2330043,Caremark,Commercial
+610127,2330000,2670001,Caremark,Commercial
+610127,2330000,2670003,Caremark,Commercial
+610127,1960000,1963126,Caremark,Commercial
+610127,1960000,1963719,Caremark,Commercial
+610127,1960000,1963757,Caremark,Commercial
+610127,1960000,1963964,Caremark,Commercial
+610127,1960000,1963966,Caremark,Commercial
+610127,1960000,1964738,Caremark,Commercial
+610127,1960000,1990007,Caremark,Commercial
+610127,1990000,1990031,Caremark,Commercial
+610127,2330000,2670003,Caremark,Commercial
+610127,9999,2640003,Caremark,Commercial
+610127,9999,2670001,Caremark,Commercial
+610210,PRX,FCMKT,Coupon,Coupon
+610212,,10060699RW02518,Express Scripts,Commercial
+610212,,60020532RW50870,Express Scripts,Commercial
+610212,,60020532RW51101,Express Scripts,Commercial
+610235,WRK,RXWNY09GLN,Express Scripts,Commercial
+610239,FEPRX,65006500,Caremark,Commercial
+610268,PHXM,TL945WF,Caremark,Commercial
+610268,PHXM,TL945wf,Coupon,Coupon
+610268,PHXM,TLP45WF,Coupon,Coupon
+610268,PHXM,,Coupon,Coupon
+610279,7777,EXCNC,Optum,Commercial
+610279,7777,EXCNJ,Optum,Commercial
+610279,7777,excnj,Optum,Commercial
+610279,7777,EXCSC,Optum,Commercial
+610279,7777,UNITEDRX,Optum,Commercial
+610279,7777,,Optum,Commercial
+610279,9999,CODRPLAN,Optum,Medicare
+610279,9999,EXCNJ,Optum,Medicare
+610279,9999,SRS,Optum,Medicare
+610279,9999,U0142290,Optum,Commercial
+610279,9999,U0186359,Optum,Commercial
+610279,9999,U0730574,Optum,Commercial
+610279,9999,u0742781,Optum,Commercial
+610279,9999,U0905531,Optum,Commercial
+610279,9999,U0918622,Optum,Commercial
+610279,9999,U0919194,Optum,Commercial
+610279,9999,U0928305,Optum,Commercial
+610279,9999,U0933715,Optum,Commercial
+610279,9999,U0936208,Optum,Commercial
+610279,9999,UGRI,Optum,Commercial
+610279,9999,ugri,Optum,Commercial
+610279,9999,UHC,Optum,Commercial
+610279,9999,UHCBIND,Optum,Commercial
+610279,9999,UHCSTRC01,Optum,Commercial
+610279,9999,uhcstrc01,Optum,Commercial
+610279,9999,UHEALTH,Optum,Commercial
+610279,9999,uhealth,Optum,Commercial
+610279,9999,UHEALTHTWINS,Optum,Commercial
+610279,9999,UNITEDRX,Optum,Commercial
+610279,9999,unitedrx,Optum,Commercial
+610279,9999,USHG,Optum,Commercial
+610279,9999,,Optum,Commercial
+610315,RXA279,13075,Express Scripts,Commercial
+610315,RXA279,13076,Express Scripts,Commercial
+610315,RXA279,4000083,Express Scripts,Commercial
+610315,RXA279,amazon,Express Scripts,Commercial
+610315,RXA279,Amazon2,Express Scripts,Commercial
+610315,RXA279,AMAZON2,Express Scripts,Commercial
+610315,RXA279,amazon2,Express Scripts,Commercial
+610315,RXA279,,Caremark,Medicare
+610415,,BA019999,Caremark,Medicare
+610415,,NJP,Caremark,Medicare
+610455,HMHS,10266146,Horizon ,Commercial
+610455,HMHS,10430314,Horizon ,Commercial
+610455,HMHS,10539892,Horizon ,Commercial
+610455,NY4000,pdp,Horizon ,Medicare
+610455,NY4000,PDP,Horizon ,Medicare
+610455,RXNEB,M23388579110944,Horizon ,Commercial
+610455,RXNEB,M238136S4109866,Horizon ,Commercial
+610455,RXNEB,M240957B5109866,Horizon ,Commercial
+610494,4343,AMNJ,Optum,Medicaid
+610494,4343,amnj,Optum,Medicaid
+610494,4343,,Optum,Medicaid
+610494,9999,AMEX,Optum,Medicaid
+610494,9999,AMNJ,Optum,Medicaid
+610494,9999,CURX,Optum,Medicaid
+610494,9999,ETRX,Optum,Medicaid
+610494,9999,HARTX,Optum,Medicaid
+610494,9999,HCLRX,Optum,Medicaid
+610494,9999,LABCORP,Optum,Commercial
+610494,9999,LOCAL813,Optum,Commercial
+610494,9999,LOTSRX,Optum,Commercial
+610494,9999,MPDURS,Optum,Commercial
+610494,9999,PRUWRX,Optum,Commercial
+610494,9999,rjfrx,Optum,Commercial
+610494,9999,RJFRX,Optum,Commercial
+610494,9999,RX7970,Optum,Commercial
+610494,9999,THC522,Optum,Commercial
+610494,9999,wpprx,Optum,Commercial
+610494,9999,WPPRX,Optum,Commercial
+610494,9999,,Optum,Medicaid
+610494,AMNJ,CURX,Optum,Medicaid
+610494,AMNJ,gehealth,Optum,Commercial
+610502,670000,1.74996E+13,Caremark,Commercial
+610502,670000,RX7700,Caremark,Commercial
+610502,670000,RX7704,Caremark,Commercial
+610502,670000,RX7710,Caremark,Commercial
+610502,670000,RX775A,Caremark,Commercial
+610502,670000,RXAETD,Caremark,Commercial
+610502,670000,,Caremark,Commercial
+610502,1811656622,,Caremark,Commercial
+610502,670000,175454,Caremark,Commercial
+610502,670000,17545434108,Caremark,Commercial
+610502,670000,1.89607E+14,Caremark,Commercial
+610502,670000,237571,Caremark,Commercial
+610502,670000,4.72419E+13,Caremark,Commercial
+610502,670000,68613435103,Caremark,Commercial
+610502,670000,68616434103,Caremark,Commercial
+610502,670000,890436-35-104,Caremark,Commercial
+610502,670000,RX7700,Caremark,Commercial
+610502,670000,rx7700,Caremark,Commercial
+610502,670000,RX7704,Caremark,Commercial
+610502,670000,rx7704,Caremark,Commercial
+610502,670000,RX7705,Caremark,Commercial
+610502,670000,RX7710,Caremark,Commercial
+610502,670000,RX7720,Caremark,Commercial
+610502,670000,RX775A,Caremark,Commercial
+610502,670000,RX7760,Caremark,Commercial
+610502,670000,,Caremark,Commercial
+610502,7777,0687226100700-F,Caremark,Commercial
+610502,7777,RX7700,Caremark,Commercial
+610502,7777,RX7704,Caremark,Commercial
+610502,7777,,Caremark,Medicare
+610502,MEDDADV,RX7117,Caremark,Medicare
+610502,MEDDADV,RX8556,Caremark,Medicare
+610502,MEDDADV,RX8712,Caremark,Medicare
+610502,MEDDADV,RXCVSD,Caremark,Medicare
+610502,MEDDADV,,Caremark,Medicare
+610502,MEDDAET,rxaetd,Caremark,Medicare
+610502,MEDDAET,RXAETD,Caremark,Medicare
+610502,MEDDAET,,Caremark,Medicare
+610502,PARTBAET,670000,Caremark,Medicare
+610502,PARTBAET,100024,Caremark,Medicare
+610502,PARTBAET,,Caremark,Medicare
+610502,,1.41405E+13,Caremark,Commercial
+610502,,1.61524E+13,Caremark,Commercial
+610502,,1707271001,Caremark,Commercial
+610502,,8.68696E+13,Caremark,Commercial
+610502,,,Caremark,Commercial
+610515,9999,COS,Caremark,Medicaid
+610515,9999,MPDACUNJ,Caremark,Medicare
+610515,9999,mpdacunj,Caremark,Medicare
+610515,ADDP,,Caremark,Medicaid
+610515,NJP8818941,,Caremark,Medicaid
+610515,NJP8870985,,Caremark,Medicaid
+610515,PAAD,2FGA,Caremark,Medicare
+610515,PAAD,NYEPIC,Caremark,Medicare
+610515,PAAD,,Caremark,Medicare
+610515,,,Caremark,Commercial
+610524,1016,40026479,Express Scripts,Commercial
+610524,1016,40027189,Express Scripts,Commercial
+610524,1016,40028143,Express Scripts,Commercial
+610524,1016,50777802,Express Scripts,Commercial
+610524,LOYALTY,40027189,Express Scripts,Commercial
+610524,LOYALTY,50772458,Express Scripts,Commercial
+610524,LOYALTY,50776822,Express Scripts,Commercial
+610524,LOYALTY,50776825,Express Scripts,Commercial
+610524,LOYALTY,50776882,Express Scripts,Commercial
+610524,LOYALTY,50777450,Express Scripts,Commercial
+610524,LOYALTY,50777459,Express Scripts,Commercial
+610524,LOYALTY,50777589,Express Scripts,Commercial
+610524,LOYALTY,50777720,Express Scripts,Commercial
+610524,LOYALTY,507777283,Express Scripts,Commercial
+610524,LOYALTY,50777751,Express Scripts,Commercial
+610524,LOYALTY,50777780,Express Scripts,Commercial
+610524,LOYALTY,50777802,Express Scripts,Commercial
+610524,LOYALTY,50777930,Express Scripts,Commercial
+610524,LOYALTY,50777934,Express Scripts,Commercial
+610524,LOYALTY,50777945,Express Scripts,Commercial
+610524,LOYALTY,50778026,Express Scripts,Commercial
+610524,LOYALTY,50778083,Express Scripts,Commercial
+610524,LOYALTY,50778094,Express Scripts,Commercial
+610524,LOYALTY,50778117,Express Scripts,Commercial
+610524,LOYALTY,50778120,Express Scripts,Commercial
+610524,LOYALTY,50778142,Express Scripts,Commercial
+610524,LOYALTY,50778164,Express Scripts,Commercial
+610524,LOYALTY,50778194,McKesson,Commercial
+610524,LOYALTY,50778195,McKesson,Commercial
+610524,LOYALTY,50778200,McKesson,Commercial
+610524,LOYALTY,50778236,McKesson,Commercial
+610524,LOYALTY,loyalty,McKesson,Commercial
+610575,890000,,Caremark,Commercial
+610591,ADV,RX8829,Caremark,Medicaid
+610591,ADV,rx8829,Caremark,Medicaid
+610591,ADV,,Caremark,Medicaid 
+610591,,RX8829,Caremark,Medicaid 
+610591,,,Caremark,Medicaid
+610593,VA,hac,OptumRx,Government/Military
+610600,AS,349,AlphaScrip,Commercial
+610600,AS,388,AlphaScrip,Commercial
+610602,EGWP,PNW801,Navitus,Medicare
+610602,NVT,PNW,Navitus,Commercial
+610602,NVT,TCFA,Navitus,Commercial
+610602,NVT,twr,Navitus,Commercial
+610602,NVT,WRTA,Navitus,Commercial
+610602,NVT,WVM,Navitus,Commercial
+610606,HMC,AMNJ,Caremark,Medicaid
+610606,HMC,HORIZON,Caremark,Medicaid
+610606,HMC,horizon,Caremark,Medicaid
+610606,HMC,Horizon,Caremark,Medicaid
+610606,HMC,HORiZON,Caremark,Medicaid
+610606,HMC,MERCYNJ,Caremark,Medicaid
+610606,HMC,,Caremark,Medicaid
+610606,HMC  HEL,HORIZON,Caremark,Medicaid
+610606,HMC  HEL,horizon,Caremark,Medicaid
+610606,HZRX,788257,Caremark,Medicaid
+610606,HZRX,RX8556,Caremark,Medicaid
+610606,HZRX,rx8829,Caremark,Medicaid
+610606,HZRX,RXAETD,Caremark,Medicaid
+610606,HZRX,RXCVSD,Caremark,Medicaid
+610606,HZRX,UNITEDRX,Caremark,Medicaid
+610606,HZRX,,Caremark,Medicaid
+610606,,horizon,Caremark,Medicaid
+610652,82266461,AARP,OptumRx,Coupon
+610652,82266461,,OptumRx,Coupon
+610709,HUN,USAT317,Humana,Medicare
+610711,SUN,65006500,Humana(MedImpact),Medicare
+610711,SUN,AMNJ,Humana(MedImpact),Medicaid
+610711,SUN,hplllnn,Humana(MedImpact),Medicaid
+610711,SUN,hpllnn,Humana(MedImpact),Medicaid
+610711,SUN,HPLLNN,Humana(MedImpact),Medicaid
+610711,SUN,Hpllnn,Humana(MedImpact),Medicaid
+610711,SUN,hpllnnn,Humana(MedImpact),Medicaid
+610711,SUN,hplnn,Humana(MedImpact),Medicaid
+610711,SUN,HPLNN,Humana(MedImpact),Medicaid
+610711,SUN,hplnnn,Humana(MedImpact),Medicaid
+610711,SUN,HPPGG,Humana(MedImpact),Medicaid
+610711,SUN,HPPLLNN,Humana(MedImpact),Medicaid
+610711,SUN,HPPRRGG,Humana(MedImpact),Medicaid
+610711,SUN,hprrg,Humana(MedImpact),Medicaid
+610711,SUN,HPRRG,Humana(MedImpact),Medicaid
+610711,SUN,hprrg+6g,Humana(MedImpact),Medicaid
+610711,SUN,hprrgg,Humana(MedImpact),Medicaid
+610711,SUN,HPRRGG,Humana(MedImpact),Medicaid
+610711,SUN,Hprrgg,Humana(MedImpact),Medicaid
+610711,SUN,hprrggg,Humana(MedImpact),Medicaid
+610711,SUN,hprrpp,Humana(MedImpact),Medicaid
+610711,SUN,HRPPGG,Humana(MedImpact),Medicaid
+610711,SUN,HRPPPGG,Humana(MedImpact),Medicaid
+610711,SUN,,Humana(MedImpact),Medicaid
+610852,2001,JD160,Capital Rx,Coupon
+610852,2001,JD52,Capital Rx,Coupon
+610852,2001,RXPB13,Capital Rx,Coupon
+610852,2001,WCSEB4105,Capital Rx,Coupon
+610852,2001,WCSUF6001,Capital Rx,Coupon
+610852,2001,WCTON1001,Capital Rx,Coupon
+610852,2001,wcztl5013,Capital Rx,Coupon
+610852,2001,WCZTL5013,Capital Rx,Coupon
+610852,2001,,Capital Rx,Coupon
+610852,CAPLRX,caplrx17,Capital Rx,Commercial
+610852,CAPLRX,jd318,Capital Rx,Commercial
+610852,CAPLRX,jd98,Capital Rx,Commercial
+610852,CAPLRX,lo8705,Capital Rx,Commercial
+610852,CAPLRX,RES00101,Capital Rx,Commercial
+610852,CAPLRX,RXPB13,Capital Rx,Commercial
+610852,CAPLRX,wcztl5013,Capital Rx,Commercial
+610852,CHM,caplrx17,Capital Rx,Commercial
+610852,CHM,caplrx7,Capital Rx,Commercial
+610852,CHM,JD142,Capital Rx,Commercial
+610852,CHM,jd160,Capital Rx,Commercial
+610852,CHM,JD160,Capital Rx,Commercial
+610852,CHM,JD184,Capital Rx,Commercial
+610852,CHM,JD197,Capital Rx,Commercial
+610852,CHM,jd204,Capital Rx,Commercial
+610852,CHM,JD204,Capital Rx,Commercial
+610852,CHM,JD216,Capital Rx,Commercial
+610852,CHM,jd218,Capital Rx,Commercial
+610852,CHM,jd286,Capital Rx,Commercial
+610852,CHM,JD287,Capital Rx,Commercial
+610852,CHM,jd298,Capital Rx,Commercial
+610852,CHM,JD312,Capital Rx,Commercial
+610852,CHM,jd52,Capital Rx,Commercial
+610862,RWRX,3341194oapi3,Rightway Healthcare,Commercial
+610862,RWRX,50027,Rightway Healthcare,Commercial
+610862,RWRX,50047,Rightway Healthcare,Commercial
+610862,RWRX,50087,Rightway Healthcare,Commercial
+610862,RWRX,50219,Rightway Healthcare,Commercial
+610862,RWRX,50220,Rightway Healthcare,Commercial
+610862,RWRX,50248,Rightway Healthcare,Commercial
+610862,RWRX,50257,Rightway Healthcare,Commercial
+610862,RWRX,62000,Rightway Healthcare,Commercial
+610862,RWRX,64002,Rightway Healthcare,Commercial
+637765,AS,349,EnvisionRx/Elixir Solutions,Coupon
+637765,AS,481,EnvisionRx/Elixir Solutions,Coupon
+637765,AS,495,EnvisionRx/Elixir Solutions,Coupon
+637765,AS,507,EnvisionRx/Elixir Solutions,Coupon
+637765,AS,912,EnvisionRx/Elixir Solutions,Coupon
+637765,AS,919,EnvisionRx/Elixir Solutions,Coupon
+637765,CRX,99992002,MedOne/ConnectiveRx,Coupon
+637765,CRX,BSHACC01,MedOne/ConnectiveRx,Coupon
+637765,CRX,PHEX1001,MedOne/ConnectiveRx,Coupon
+637765,CRX,phex1001,MedOne/ConnectiveRx,Coupon
+637765,CRX,RXBD1001,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCSCNL1,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCSNEXT1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcsnext1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcsolosec1,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCSOLOSEC1,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCSTLCA1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcwcnl1,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCWCNL1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcwcnL1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcwfer1,MedOne/ConnectiveRx,Coupon
+637765,CRX,TCWGEM1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcwgem1,MedOne/ConnectiveRx,Coupon
+637765,CRX,tcwmre1,MedOne/ConnectiveRx,Coupon
+6558,HCP  HUN,1210t003,Humana,Medicaid
+6558,HDN,AWPHILA,Humana,Medicaid
+6558,HDN,YURA,Humana,Medicaid
+800004,8126,10003474,Optum,Commercial
+800004,,,Optum,Commercial
+87726,1990000,00308A0002,Optum,Commercial
+87726,1990000,OXFRDHP,Optum,Commercial
+87726,1990000,,Optum,Commercial
+8878,TCN,RXPB3,Optum,Commercial
+8878,TCN,UHH0100,Optum,Commercial
+8878,TCN,uhh0376,Optum,Commercial
+8878,TCN,UHH0376,Optum,Commercial
+8878,WDRX,20761,Optum,Commercial
+8878,WDRX,rwtfrklnh,Optum,Commercial
+9430,HUN,pro21000,Optum,Commercial
+9430,VCTY,sosilver,Optum,Commercial
+9430,,PRO21000,Optum,Commercial
+9430,,pro21000,Optum,Commercial
+NJM,,,Optum,Commercial
+PIP,1,,Optum,Commercial
+VAC CL,,,Optum,Commercial
+610014,PEU,LEHBRXS,Express Scripts,Commercial
+610014,PEU,LNERX01,Express Scripts,Commercial
+610014,PEU,LOCAL74,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343171,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343172,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343177,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343181,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343303,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343337,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343868,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343897,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003343980,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344316,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344327,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344388,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344528,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344946,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003344973,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345111,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345209,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345261,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345358,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345399,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345409,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345675,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003345902,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346052,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346137,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346236,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346442,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346458,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346485,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346502,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346589,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346590,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346688,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346721,Express Scripts,Commercial
+17010,0215COMM,CIGUG0003346818,Express Scripts,Commercial
+17010,0216INTL,NR8A,Express Scripts,Commercial
+17010,0216INTL,P46A,Express Scripts,Commercial
+17010,0518GWH,183115,Express Scripts,Commercial
+17010,0518GWH,3337298,Express Scripts,Commercial
+17010,0518GWH,3341386,Express Scripts,Commercial
+17010,0518GWH,3344619,Express Scripts,Commercial
+17010,0518GWH,3345625,Express Scripts,Commercial
+17010,0518GWH,620383,Express Scripts,Commercial
+17010,0518GWH,620454,Express Scripts,Commercial
+17010,0518GWH,621328,Express Scripts,Commercial
+17010,0518GWH,622475,Express Scripts,Commercial
+17010,0518GWH,623946,Express Scripts,Commercial
+17010,0518GWH,627328,Express Scripts,Commercial
+17010,0518GWH,627737,Express Scripts,Commercial
+17010,0518GWH,629630,Express Scripts,Commercial
+17010,0518GWH,635361,Express Scripts,Commercial
+17010,0518GWH,636932,Express Scripts,Commercial
+17010,0518GWH,638396,Express Scripts,Commercial
+17010,0518GWH,653664,Express Scripts,Commercial
+17010,0518GWH,656789,Express Scripts,Commercial
+17010,0518GWH,657657,Express Scripts,Commercial
+17010,0518GWH,660637,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000608372,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000611281,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000612146,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000612839,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000612842,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000616397,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000616520,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000616677,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000618367,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000619341,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000620383,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000623702,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000623946,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000624098,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000624116,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000625153,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000625378,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000625498,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000626304,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000626890,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000626986,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000627328,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000627578,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000627737,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000628976,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000630334,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000630793,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000632032,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000632299,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000633962,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000634022,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000634404,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000634643,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000635552,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000636020,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000636071,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000636166,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000636303,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000636932,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637313,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637337,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637581,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637661,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637726,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637849,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000637951,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000638228,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000638352,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000638377,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000638527,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000639034,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000639170,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000650793,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000650949,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651414,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651425,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651439,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651473,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651630,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651676,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000651911,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000652038,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000652247,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000652510,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000653151,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000653431,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000654018,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000654252,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000654324,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000654478,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000654811,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655223,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655335,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655423,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655659,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655794,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655903,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000655932,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000656475,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000656859,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000657169,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000657287,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000657689,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000657975,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000658859,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000659032,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000659570,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000659932,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000660187,Express Scripts,Commercial
+17010,0518GWH,CIGUG0000661796,Express Scripts,Commercial
+17010,0518GWH,npsc,Express Scripts,Commercial
+17010,0518GWH,nr8a,Express Scripts,Commercial
+17010,0518GWH,,Express Scripts,Commercial
+17010,0519PAYR,721419,Express Scripts,Commercial
+17010,0519PAYR,795316,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000712455,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000713897,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000716923,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000721419,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000737747,Express Scripts,Commercial
+17010,0519PAYR,CIGPS0000795316,Express Scripts,Commercial
+17010,CIMCARE,CGMAPDRX,Express Scripts,Medicare
+17010,CIMCARE,CIGPDPRX,Express Scripts,Medicare
+17010,CIMCARE,,Express Scripts,Medicare
+17076,9999,19589100,Express Scripts,Commercial
+17076,9999,a22176,Express Scripts,Commercial
+17274,PDMI,99995085,TrueScripts,Commercial
+17290,55101202,e1280,Express Scripts,Commercial
+17290,55101202,X7540,Express Scripts,Commercial
+17290,55101202,x7540,Express Scripts,Commercial
+17290,ACR,99996001,Express Scripts,Commercial
+17366,9999,BOE,Optum,Commercial
+17366,9999,boe,Optum,Commercial
+17366,9999,cbn,Optum,Commercial
+17366,9999,CBN,Optum,Commercial
+17449,6792000,PRXMRT,MAGELLAN RX,Commercial
+17449,,prxmrt,MAGELLAN RX,Commercial
+17688,9743,19013,EMPIRX HEALTH,Commercial
+17688,9743,19019,EMPIRX HEALTH,Commercial
+17688,9743,19061,EMPIRX HEALTH,Commercial
+17688,9743,19077,EMPIRX HEALTH,Commercial
+17688,9743,19122,EMPIRX HEALTH,Commercial
+17688,9743,1934,EMPIRX HEALTH,Commercial
+18364,8001002,001HPT,Caremark,Commercial
+18364,8001002,001PNP,Caremark,Commercial
+18570,SCRX,BENEFIT,Optum,Commercial
+18643,UHC,CTRWAG,Optum,Commercial
+18844,3F,FCEM3WB,Coupon,Coupon
+18844,3F,fcldsaf8,Coupon,Coupon
+18844,3F,FCMJ5DWB,Coupon,Coupon
+18844,3F,FCXXAD,Coupon,Coupon
+18844,3F,FVCNXTM18,Coupon,Coupon
+18844,3F,FVTRUEPORT50,Coupon,Coupon
+18844,3F,NTX70,Coupon,Coupon
+18844,3F,,Coupon,Coupon
+19025,8001002,17724,Humana,Commercial
+19025,8001002,847887,Humana,Commercial
+19158,CNRX,AC11923002,Connective RX,Copay card
+19158,CNRX,ac11923002,Connective RX,Copay card
+19158,CNRX,AC20025001,Connective RX,Copay card
+19158,CNRX,ac20028005,Connective RX,Copay card
+19158,CNRX,AC20028005,Connective RX,Copay card
+19158,CNRX,AC20029003,Connective RX,Copay card
+19158,CNRX,ac20029003,Connective RX,Copay card
+19158,CNRX,AC20029007,Connective RX,Copay card
+19158,CNRX,ac20029007,Connective RX,Copay card
+19158,CNRX,ac36701007,Connective RX,Copay card
+19158,CNRX,ac55907001,Connective RX,Copay card
+19158,CNRX,AC68024004,Connective RX,Copay card
+19158,CNRX,ac68024004,Connective RX,Copay card
+19158,CNRX,AC68030002,Connective RX,Copay card
+19158,CNRX,ac68030002,Connective RX,Copay card
+19158,CNRX,ac68036002,Connective RX,Copay card
+19158,CNRX,AC68038002,Connective RX,Copay card
+19158,CNRX,ac68038002,Connective RX,Copay card
+19158,CNRX,AC68057019,Connective RX,Copay card
+19158,CNRX,AC68057024,Connective RX,Copay card
+19158,CNRX,av14104002,Connective RX,Copay card
+19158,CNRX,AV14104002,Connective RX,Copay card
+19158,CNRX,av20019005,Connective RX,Copay card
+19158,CNRX,EC12701041,Connective RX,Copay card
+19158,CNRX,EC20014001,Connective RX,Copay card
+19158,CNRX,ec20014001,Connective RX,Copay card
+19158,CNRX,EC20021050,Connective RX,Copay card
+19158,CNRX,ec34010001,Connective RX,Copay card
+19158,CNRX,EC34010010,Connective RX,Copay card
+19158,CNRX,EC48006034,Connective RX,Copay card
+19158,CNRX,EC58020002,Connective RX,Copay card
+19158,CNRX,ECQULIPTA0,Connective RX,Copay card
+19158,CNRX,,Connective RX,Copay card
+19363,7283,RXPB3,EmpiRX,Commercial
+19595,1940000,1940000,Caremark,Medicaid
+20099,AC,wl2a,CarelonRx,Commercial
+20099,CH,1872tv,CarelonRx,Commercial
+20099,CH,WL2A,CarelonRx,Commercial
+20099,IS,WLDA  ,CarelonRx,Commercial
+20099,IS,WX7A,CarelonRx,Commercial
+20099,WG,174331m1a2,CarelonRx,Commercial
+20099,WG,300451MW01,CarelonRx,Commercial
+20099,WG,MONTERX,CarelonRx,Commercial
+20099,WG,WL2A,CarelonRx,Commercial
+20099,WG,wl4a,CarelonRx,Commercial
+20099,WG,WL4A,CarelonRx,Commercial
+20099,WG,WL5A,CarelonRx,Commercial
+20099,WG,WL7A,CarelonRx,Commercial
+20099,WG,WL8A,CarelonRx,Commercial
+20099,WG,WLAA,CarelonRx,Commercial
+20099,WG,wlba,CarelonRx,Commercial
+20099,WG,WLDA,CarelonRx,Commercial
+20099,WG,wlda,CarelonRx,Commercial
+20099,WG,WLHA,CarelonRx,Commercial
+20099,WG,WXXHA,CarelonRx,Commercial
+20107,AC,RX8478,CarelonRx,Medicaid
+20107,AC,wkpa,CarelonRx,Medicaid
+20107,AC,WKPA,CarelonRx,Medicaid
+20107,WP,WKPA,CarelonRx,Medicaid
+20107,WP,wkpa,CarelonRx,Medicaid
+20107,WP,,CarelonRx,Medicaid
+20115,IS,WM2A,CarelonRx,Medicaid
+20115,IS,wm2a,CarelonRx,Medicaid
+20115,IS,,CarelonRx,Medicaid
+20115,MPPPOR,WM2A,CarelonRx,Medicare
+20123,IRXCOMM,rx42ae,CarelonRx,Commercial
+20685,ARXL,88950,Caremark,Commercial
+20958,7960000,true1169,TrueRX,Commercial
+20974,CWHS,CWE,Caremark,Medicare
+21684,*,*,Express Scripts,Commercial
+21684,*,BXMN,Express Scripts,Commercial
+21684,,BXMN,Express Scripts,Commercial
+21841,18000405,100723bp,FairosRx,Commercial
+22022,ICS,FVS,Optum,Commercial
+22022,ICS,PRO,Optum,Commercial
+22096,FBG,fv1668,Optum,Commercial
+22451,FORTE,FH2GEN,Express Scripts,Commercial
+22451,FORTE,fh2gen,Express Scripts,Commercial
+22451,FORTE,forte,Express Scripts,Commercial
+22451,FORTE,FORTE,Express Scripts,Commercial
+22816,%,NWRKBOE,Caremark,Commercial
+22816,%,RX23KZ,Caremark,Commercial
+22816,%,RX7704,Caremark,Commercial
+22816,%,SONJCOM,Caremark,Commercial
+22816,%,UNITEDRX,Caremark,Commercial
+22816,%,,Caremark,Commercial
+23392,CPT,epic,Caremark,Commercial
+23575,9999,advs,Caremark,Coupon
+23575,9999,HBA,Caremark,Coupon
+23575,9999,ida,Caremark,Coupon
+23575,9999,SASAH,Caremark,Coupon
+23575,9999,,Caremark,Coupon
+24160,14032015,14164172,EmpiRx,Commercial
+24160,14032015,19013,EmpiRx,Commercial
+24160,14032015,19019,EmpiRx,Commercial
+24160,14032015,19098,EmpiRx,Commercial
+24368,3207,15819,Express Scripts,Commercial
+24368,3207,19305,Express Scripts,Commercial
+24368,3207,305,Express Scripts,Commercial
+24532,ARX32839,101101,Coupon,Coupon
+25242,SSN,FCLDSAFC,Express Scripts,Commercial
+25656,3270,,Express Scripts,Commercial
+25706,IFX,AUVRET,Caremark,Coupon
+25706,IFX,MP01,Caremark,Coupon
+25706,IFX,mp01,Caremark,Coupon
+25706,IFX,mP01,Caremark,Coupon
+25706,IFX,RES11,Caremark,Coupon
+25706,IFX,SC4539,Caremark,Coupon
+25706,IFX,,Caremark,Coupon
+25862,TSAC,99995530,Optum,Commercial
+26696,77993333,BSCCOMM,Caremark,Commercial
+28406,OSCAR,RX1555,Caremark,Commercial
+28406,OSCAR,rx1555,Caremark,Commercial
+3858,A4,2DJA,Express Scripts,Commercial
+3858,A4,2DSA,Express Scripts,Commercial
+3858,A4,2G2A,Express Scripts,Commercial
+3858,A4,2GDA,Express Scripts,Commercial
+3858,A4,2gda,Express Scripts,Commercial
+3858,A4,2GJA,Express Scripts,Commercial
+3858,A4,2GKA,Express Scripts,Commercial
+3858,A4,2gka,Express Scripts,Commercial
+3858,A4,2KAACIG,Express Scripts,Commercial
+3858,A4,A88A,Express Scripts,Commercial
+3858,A4,ALCLEAR,Express Scripts,Commercial
+3858,A4,ALTICRX,Express Scripts,Commercial
+3858,A4,AMAZON1,Express Scripts,Commercial
+3858,A4,amazon1,Express Scripts,Commercial
+3858,A4,AMENTUM,Express Scripts,Commercial
+3858,A4,AMERIT1,Express Scripts,Commercial
+3858,A4,APNA,Express Scripts,Commercial
+3858,A4,AQLA,Express Scripts,Commercial
+3858,A4,ARCHCAP,Express Scripts,Commercial
+3858,A4,ATIRX19,Express Scripts,Commercial
+3858,A4,bcwp001,Express Scripts,Commercial
+3858,A4,BDOUSA1,Express Scripts,Commercial
+3858,A4,BHAA,Express Scripts,Commercial
+3858,A4,BJSRX19,Express Scripts,Commercial
+3858,A4,BRWNRX1,Express Scripts,Commercial
+3858,A4,BXS000019079897,Express Scripts,Commercial
+3858,A4,CARERXP,Express Scripts,Commercial
+3858,A4,cboerx2,Express Scripts,Commercial
+3858,A4,CBSRX18,Express Scripts,Commercial
+3858,A4,CHANEL5,Express Scripts,Commercial
+3858,A4,CTYCARX,Express Scripts,Commercial
+3858,A4,DEARX01,Express Scripts,Commercial
+3858,A4,DEMA,Express Scripts,Commercial
+3858,A4,DODA,Express Scripts,Commercial
+3858,A4,DSMA,Express Scripts,Commercial
+3858,A4,DVNBSTR,Express Scripts,Commercial
+3858,A4,EDSNBOE,Express Scripts,Commercial
+3858,A4,ENTA,Express Scripts,Commercial
+3858,A4,EXLHPRX,Express Scripts,Commercial
+3858,A4,EYECARE,Express Scripts,Commercial
+3858,A4,FANATIC,Express Scripts,Commercial
+3858,A4,FCWA,Express Scripts,Commercial
+3858,A4,FDNA,Express Scripts,Commercial
+3858,A4,FERRERO,Express Scripts,Commercial
+3858,A4,FRUSARX,Express Scripts,Commercial
+3858,A4,FUND1RX,Express Scripts,Commercial
+3858,A4,GH3A,Express Scripts,Commercial
+3858,A4,H5LA,Express Scripts,Commercial
+3858,A4,hmrk001,Express Scripts,Commercial
+3858,A4,HMRK001,Express Scripts,Commercial
+3858,A4,HNICORP,Express Scripts,Commercial
+3858,A4,IP12062,Express Scripts,Commercial
+3858,A4,IWLOC11,Express Scripts,Commercial
+3858,A4,JNAA,Express Scripts,Commercial
+3858,A4,JUTA,Express Scripts,Commercial
+3858,A4,K8CA,Express Scripts,Commercial
+3858,A4,K8VA,Express Scripts,Commercial
+3858,A4,K9BA,Express Scripts,Commercial
+3858,A4,KA2A,Express Scripts,Commercial
+3858,A4,KC9A,Express Scripts,Commercial
+3858,A4,KCVA,Express Scripts,Commercial
+3858,A4,KHXA,Express Scripts,Commercial
+3858,A4,khxa,Express Scripts,Commercial
+3858,A4,kk8a,Express Scripts,Commercial
+3858,A4,KPMA,Express Scripts,Commercial
+3858,A4,KPMG1RX,Express Scripts,Commercial
+3858,A4,L4SA,Express Scripts,Commercial
+3858,A4,L4YA,Express Scripts,Commercial
+3858,A4,LOCA701,Express Scripts,Commercial
+3858,A4,LOCALON,Express Scripts,Commercial
+3858,A4,LRHSDRX,Express Scripts,Commercial
+3858,A4,ME6A,Express Scripts,Commercial
+3858,A4,MM6A,Express Scripts,Commercial
+3858,A4,MMXRX4U,Express Scripts,Commercial
+3858,A4,MORGNRX,Express Scripts,Commercial
+3858,A4,MORSTAN,Express Scripts,Commercial
+3858,A4,morstan,Express Scripts,Commercial
+3858,A4,NEWHARX,Express Scripts,Commercial
+3858,A4,NEWJRAC,Express Scripts,Commercial
+3858,A4,NFPCORP,Express Scripts,Commercial
+3858,A4,NICERX1,Express Scripts,Commercial
+3858,A4,nicerx1,Express Scripts,Commercial
+3858,A4,NJLAB16,Express Scripts,Commercial
+3858,A4,NJRA,Express Scripts,Commercial
+3858,A4,NUTANIX,Express Scripts,Commercial
+3858,A4,NWRKBOE,Express Scripts,Commercial
+3858,A4,nwrkboe,Express Scripts,Commercial
+3858,A4,NYACKRX,Express Scripts,Commercial
+3858,A4,NYSNARX,Express Scripts,Commercial
+3858,A4,nysnarx,Express Scripts,Commercial
+3858,A4,NYYA,Express Scripts,Commercial
+3858,A4,NZ4A,Express Scripts,Commercial
+3858,A4,ONEXCEV,Express Scripts,Commercial
+3858,A4,ORNRX4U,Express Scripts,Commercial
+3858,A4,PANA,Express Scripts,Commercial
+3858,A4,PD7A,Express Scripts,Commercial
+3858,A4,PLVA,Express Scripts,Commercial
+3858,A4,PRESBOP,Express Scripts,Commercial
+3858,A4,QURATE1,Express Scripts,Commercial
+3858,A4,RDBA,Express Scripts,Commercial
+3858,A4,RENTOKI,Express Scripts,Commercial
+3858,A4,RGIU108,Express Scripts,Commercial
+3858,A4,SHAW015,Express Scripts,Commercial
+3858,A4,SIXFIRT,Express Scripts,Commercial
+3858,A4,STATE100A,Express Scripts,Commercial
+3858,A4,STEEMER,Express Scripts,Commercial
+3858,A4,STVGPRX,Express Scripts,Commercial
+3858,A4,TATACON,Express Scripts,Commercial
+3858,A4,tatacon,Express Scripts,Commercial
+3858,A4,THENEW1,Express Scripts,Commercial
+3858,A4,trgtrx1,Express Scripts,Commercial
+3858,A4,TRGTRX1,Express Scripts,Commercial
+3858,A4,TTECSEC,Express Scripts,Commercial
+3858,A4,UAPLO24,Express Scripts,Commercial
+3858,A4,USVISRX,Express Scripts,Commercial
+3858,A4,V2UA,Express Scripts,Commercial
+3858,A4,v2ua,Express Scripts,Commercial
+3858,A4,V43A,Express Scripts,Commercial
+3858,A4,VEOLIA1,Express Scripts,Commercial
+3858,A4,VERISKA,Express Scripts,Commercial
+3858,A4,VNAHGRP,Express Scripts,Commercial
+3858,A4,W94A,Express Scripts,Commercial
+3858,A4,WELLRX2,Express Scripts,Commercial
+3858,A4,WFLEET1,Express Scripts,Commercial
+3858,A4,WINTHRP,Express Scripts,Commercial
+3858,A4,WSAUDRX,Express Scripts,Commercial
+3858,A4,WSPUSA1,Express Scripts,Commercial
+3858,A4,WTCRESP,Express Scripts,Commercial
+3858,A4,WTCSURV,Express Scripts,Commercial
+3858,A4,yjta,Express Scripts,Commercial
+3858,A4,Z9VA,Express Scripts,Commercial
+3858,A4,,Express Scripts,Commercial
+3858,A4   HUN,amazon1,Express Scripts,Commercial
+3858,A4   HUN,pana,Express Scripts,Commercial
+3858,A4   HUN,tatacon,Express Scripts,Commercial
+3858,A4   HUN,v2ua,Express Scripts,Commercial
+3858,A4 7700630,2gka,Express Scripts,Commercial
+3858,MA,2ESA,Express Scripts,Medicaid
+3858,MA,2GDA,Express Scripts,Medicaid
+3858,MA,2gda,Express Scripts,Medicaid
+3858,MA,2GDA2,Express Scripts,Medicaid
+3858,MA,LOC2013,Express Scripts,Medicaid
+3858,MA,WKPA,Express Scripts,Medicaid
+3858,MA,Z9VA,Express Scripts,Medicaid
+3858,MA,,Express Scripts,Medicaid
+3858,MD,GH3A,Express Scripts,Medicaid
+3858,NCP99,UFTWFRX,Express Scripts,Commercial
+3858,,JRGA,Express Scripts,Commercial
+3858,,NWRKBOE,Express Scripts,Commercial
+400023,1071998,L4JA,Express Scripts,Medicare
+400023,1071998,,Express Scripts,Medicare
+400023,20050403,KHYA,Express Scripts,Medicare
+400023,,KHXA,Express Scripts,Medicare
+4261,CAL,,Optum,Commercial
+4261,DOL,,Optum,Commercial
+4336,77993333,RX33CC,Caremark,Commercial
+4336,77993333,RX33DF,Caremark,Commercial
+4336,77993333,,Caremark,Commercial
+4336,ADV,RX0022,Caremark,Commercial
+4336,ADV,RX0048,Caremark,Commercial
+4336,ADV,RX0102,Caremark,Commercial
+4336,ADV,RX0139,Caremark,Commercial
+4336,ADV,RX0149,Caremark,Commercial
+4336,ADV,RX0159,Caremark,Commercial
