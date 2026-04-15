@@ -14,4 +14,8 @@ export const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  // 🔥 CRITICAL FIXES
+  max: 200, // limit total connections (VERY IMPORTANT)
+  idleTimeoutMillis: 30000, // close idle connections after 30s
+  connectionTimeoutMillis: 2000, // fail fast if DB unavailable
 });

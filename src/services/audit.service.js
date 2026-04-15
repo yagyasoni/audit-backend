@@ -1,418 +1,26 @@
-// import { pool } from "../config/db.js";
-// import fs from "fs";
-// import path from "path";
-// import { parse } from "csv-parse/sync";
-// import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
-
-// export const createAudit = async (name) => {
-//   const result = await pool.query(
-//     `
-//     INSERT INTO audits (name)
-//     VALUES ($1)
-//     RETURNING *
-//     `,
-//     [name],
-//   );
-
-//   return result.rows[0];
-// };
-
-// const FRONT_TO_DB_KEY = {
-//   ndcNumber: "ndc",
-//   rxNumber: "rx_number",
-//   status: "status",
-//   dateFilled: "date_filled",
-//   drugName: "drug_name",
-//   quantity: "quantity",
-//   packageSize: "package_size",
-//   primaryInsuranceBinNumber: "primary_bin",
-//   primaryInsurancePaid: "primary_paid",
-//   secondaryInsuranceBinNumber: "secondary_bin",
-//   secondaryInsurancePaid: "secondary_paid",
-//   brand: "brand",
-// };
-
-// function toDbHeaderMapping(frontMapping = {}) {
-//   const out = {};
-//   for (const [frontKey, selectedStandardHeader] of Object.entries(frontMapping)) {
-//     const dbKey = FRONT_TO_DB_KEY[frontKey];
-//     if (!dbKey) continue;
-//     out[dbKey] = selectedStandardHeader; // e.g. rx_number -> "rx_number"
-//   }
-//   return out;
-// }
-
-// const cleanNumber = (v) => {
-//   if (v === null || v === undefined || v === "") return null;
-//   const s = String(v).trim();
-//   // remove $ , and other junk
-//   const n = Number(s.replace(/[^0-9.-]/g, ""));
-//   return Number.isFinite(n) ? n : null;
-// };
-
-// const cleanInt = (v) => {
-//   const n = cleanNumber(v);
-//   return n === null ? null : Math.trunc(n);
-// };
-
-// const cleanDate = (v) => {
-//   if (!v) return null;
-//   const s = String(v).trim();
-
-//   // Allow ISO yyyy-mm-dd as-is
-//   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-//   // Try mm/dd/yyyy -> yyyy-mm-dd
-//   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-//   if (m) {
-//     const mm = String(m[1]).padStart(2, "0");
-//     const dd = String(m[2]).padStart(2, "0");
-//     const yy = m[3];
-//     return `${yy}-${mm}-${dd}`;
-//   }
-
-//   // If unknown format, return null to avoid Postgres crash
-//   return null;
-// };
-
-// export const updateAuditDates = async (auditId, dates) => {
-//   const {
-//     inventory_start_date,
-//     inventory_end_date,
-//     wholesaler_start_date,
-//     wholesaler_end_date,
-//   } = dates;
-
-//   const result = await pool.query(
-//     `
-//     UPDATE audits
-//     SET
-//       inventory_start_date = $1,
-//       inventory_end_date = $2,
-//       wholesaler_start_date = $3,
-//       wholesaler_end_date = $4
-//     WHERE id = $5
-//     RETURNING *
-//     `,
-//     [
-//       inventory_start_date,
-//       inventory_end_date,
-//       wholesaler_start_date,
-//       wholesaler_end_date,
-//       auditId,
-//     ],
-//   );
-
-//   return result.rows[0] || null;
-// };
-
-// export const saveInventoryFile = async (auditId, filename, headerMapping) => {
-//   // ensure audit exists
-//   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
-//     auditId,
-//   ]);
-
-//   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
-
-//   const result = await pool.query(
-//     `
-//     INSERT INTO audit_inventory_files (audit_id, file_name)
-//     VALUES ($1, $2)
-//     RETURNING *
-//     `,
-//     [auditId, filename],
-//   );
-
-//   // Auto-parse CSV and insert inventory rows
-//   const filePath = path.join(process.cwd(), "uploads/inventory", filename);
-//   // 1️⃣ Normalize file using frontend mapping
-// const dbHeaderMapping = toDbHeaderMapping(headerMapping);
-// // const normalizedPath = await normalizeInventoryCSV(filePath, dbHeaderMapping);
-// console.log("Normalizing file:", filePath);
-// console.log("Header mapping:", headerMapping);
-
-// let normalizedPath;
-
-// try {
-//   normalizedPath = await normalizeInventoryCSV(
-//     filePath,
-//     headerMapping
-//   );
-//   console.log("Normalized file created:", normalizedPath);
-// } catch (e) {
-//   console.error("NORMALIZATION FAILED:", e);
-//   throw e;
-// }
-
-// // 2️⃣ Read normalized file
-// const normalizedContent = fs.readFileSync(normalizedPath, "utf-8");
-
-// const records = parse(normalizedContent, {
-//   columns: true,
-//   skip_empty_lines: true,
-//   trim: true,
-// });
-
-// console.log("Records to insert:", records.length);
-// if (records.length > 0) {
-//   console.log("First record:", JSON.stringify(records[0]));
-//   await insertInventoryRows(auditId, records);
-// }
-
-// await pool.query(
-//   `UPDATE audits SET status = 'started' WHERE id = $1`,
-//   [auditId]
-// );
-//   return result.rows[0];
-// };
-
-// export const insertInventoryRows = async (auditId, rows) => {
-//   const client = await pool.connect();
-
-//   try {
-//     await client.query("BEGIN");
-
-//     for (const r of rows) {
-//       await client.query(
-//   `INSERT INTO inventory_rows
-//   (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
-//    primary_bin, primary_pcn, primary_group, primary_paid, secondary_bin, secondary_paid, brand)
-//   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-//   [
-//     auditId,
-//     r.ndc || null,
-//     r.rx_number || null,
-//     r.status || null,
-//     r.date_filled || null,
-//     r.drug_name || null,
-//     r.quantity ? parseInt(r.quantity) : null,
-//     r.package_size || null,
-//     r.primary_bin || null,
-//     r.primary_pcn || null,
-//     r.primary_group || null,
-//     r.primary_paid ? parseFloat(r.primary_paid) : null,
-//     r.secondary_bin || null,
-//     r.secondary_paid ? parseFloat(r.secondary_paid) : null,
-//     r.brand || null,
-//   ]
-// );
-//     }
-
-//     await client.query("COMMIT");
-//     return { inserted: rows.length };
-//   } catch (err) {
-//     await client.query("ROLLBACK");
-//     throw err;
-//   } finally {
-//     client.release();
-//   }
-// };
-
-// export const saveWholesalerFiles = async (auditId, filesArray) => {
-//   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [auditId]);
-//   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
-
-//   const results = [];
-
-//   for (const fileObj of filesArray) {
-//     // Insert into wholesaler_files table
-//     const fileInsert = await pool.query(
-//       `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
-//        VALUES ($1, $2, $3) RETURNING *`,
-//       [auditId, fileObj.wholesaler_name, fileObj.file_name]
-//     );
-
-//     const wholesalerFileId = fileInsert.rows[0].id;
-
-//     // Parse the CSV and insert rows into wholesaler_rows
-//     const filePath = path.join(process.cwd(), "uploads/wholesalers", fileObj.file_name);
-
-//     if (!fs.existsSync(filePath)) {
-//       console.warn("Wholesaler file not found:", filePath);
-//       continue;
-//     }
-
-//     const content = fs.readFileSync(filePath, "utf-8");
-//     const records = parse(content, {
-//       columns: true,
-//       skip_empty_lines: true,
-//       trim: true,
-//     });
-
-//     const mapping = fileObj.headerMapping || {};
-//     console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
-// console.log("SAMPLE ROW KEYS:", records.length > 0 ? Object.keys(records[0]) : []);
-// console.log("SAMPLE ROW:", records.length > 0 ? JSON.stringify(records[0]) : "empty");
-
-//     // mapping keys: ndcNumber, invoiceDate, itemDescription, quantity, unitPrice, totalPrice
-//     // mapping values: actual CSV header names
-
-//     const client = await pool.connect();
-//     try {
-//       await client.query("BEGIN");
-
-//       for (const row of records) {
-
-// // mapping.ndcNumber contains the actual CSV column name user selected
-// const ndcCol = mapping.ndcNumber;
-// const dateCol = mapping.invoiceDate;
-// const descCol = mapping.itemDescription;
-// const qtyCol = mapping.quantity;
-// const unitCol = mapping.unitPrice;
-// const totalCol = mapping.totalPrice;
-
-// const ndc = ndcCol ? (row[ndcCol] ?? null) : null;
-// const invoiceDate = dateCol ? (row[dateCol] ?? null) : null;
-// const productName = descCol ? (row[descCol] ?? null) : null;
-// const quantity = qtyCol && row[qtyCol] !== undefined && row[qtyCol] !== ''
-//   ? (parseInt(String(row[qtyCol]).replace(/[^0-9-]/g, '')) || 0)
-//   : null;
-// const unitCost = unitCol && row[unitCol] ? parseFloat(String(row[unitCol]).replace(/[^0-9.]/g, '')) : null;
-// const totalCost = totalCol && row[totalCol] ? parseFloat(String(row[totalCol]).replace(/[^0-9.]/g, '')) : null;
-
-//         await client.query(
-//           `INSERT INTO wholesaler_rows
-//            (audit_id, wholesaler_file_id, ndc, product_name, quantity, unit_cost, total_cost, invoice_date)
-//            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-//           [
-//             auditId,
-//             wholesalerFileId,
-//             ndc,
-//             productName,
-//             quantity,
-//             unitCost,
-//             totalCost,
-//             cleanDate(invoiceDate),
-//           ]
-//         );
-//       }
-
-//       await client.query("COMMIT");
-//       console.log(`Inserted ${records.length} wholesaler rows for ${fileObj.wholesaler_name}`);
-//     } catch (err) {
-//       await client.query("ROLLBACK");
-//       throw err;
-//     } finally {
-//       client.release();
-//     }
-
-//     results.push(fileInsert.rows[0]);
-//   }
-
-//   return results;
-// };
-
-// // --- NEW ---
-
-// export const getAudits = async () => {
-//   const result = await pool.query(`
-//     SELECT
-//       a.id,
-//       a.name,
-//       a.status,
-//       a.inventory_start_date,
-//       a.inventory_end_date,
-//       a.wholesaler_start_date,
-//       a.wholesaler_end_date,
-//       a.created_at,
-//       (SELECT COUNT(*) FROM audit_inventory_files f WHERE f.audit_id = a.id) AS inventory_files_count
-//     FROM audits a
-//     ORDER BY a.created_at DESC
-//   `);
-
-//   return result.rows;
-// };
-
-// export const getAuditById = async (auditId) => {
-//   const result = await pool.query(`SELECT * FROM audits WHERE id = $1`, [
-//     auditId,
-//   ]);
-//   return result.rows[0] || null;
-// };
-
-// export const getInventoryRows = async (auditId) => {
-//   const result = await pool.query(
-//     `SELECT * FROM inventory_rows
-//      WHERE audit_id = $1
-//      ORDER BY id ASC`,
-//     [auditId]
-//   );
-
-//   const rows = result.rows;
-
-//   // 🔹 Define required columns for report UI
-//   const REQUIRED_COLUMNS = [
-//     "ndc",
-//     "rx_number",
-//     "status",
-//     "date_filled",
-//     "drug_name",
-//     "quantity",
-//     "package_size",
-//     "primary_bin",
-//     "primary_paid",
-//     "secondary_bin",
-//     "secondary_paid",
-//     "brand",
-//   ];
-
-//   // 🔹 Ensure missing columns are auto-added
-//   const normalized = rows.map((row) => {
-//     const normalizedRow = {};
-//     REQUIRED_COLUMNS.forEach((col) => {
-//       normalizedRow[col] = row[col] ?? null;
-//     });
-//     return normalizedRow;
-//   });
-
-//   return normalized;
-// };
-
-// // export const deleteAudit = async (auditId) => {
-// //   const result = await pool.query(
-// //     `DELETE FROM audits WHERE id = $1 RETURNING *`,
-// //     [auditId],
-// //   );
-// //   return result.rows[0] || null;
-// // };
-
-// //here it also deletes the physical files from uploads/inventory to prevent orphaned files and save disk space
-// export const deleteAudit = async (auditId) => {
-//   // 1) get filenames first
-//   const filesRes = await pool.query(
-//     `SELECT file_name FROM audit_inventory_files WHERE audit_id = $1`,
-//     [auditId]
-//   );
-
-//   // 2) delete audit (cascades rows/files table rows)
-//   const result = await pool.query(
-//     `DELETE FROM audits WHERE id = $1 RETURNING *`,
-//     [auditId]
-//   );
-
-//   // 3) delete physical files
-//   for (const row of filesRes.rows) {
-//     const filePath = path.join(process.cwd(), "uploads/inventory", row.file_name);
-//     try {
-//       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-//     } catch (e) {
-//       console.warn("Failed to delete file:", filePath, e.message);
-//     }
-//   }
-
-//   return result.rows[0] || null;
-// };
-
 import { pool } from "../config/db.js";
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
 import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
 
+const normalizeNDC = (ndc) => {
+  if (!ndc) return null;
+
+  // 1. Keep only digits
+  let digits = ndc.replace(/\D/g, "");
+
+  // 2. Pad to 11 digits
+  digits = digits.padStart(11, "0");
+
+  // 3. Format to 5-4-2
+  return `${digits.slice(0, 5)}-${digits.slice(5, 9)}-${digits.slice(9, 11)}`;
+};
+
 export const createAudit = async (name, userId) => {
   const result = await pool.query(
-    `INSERT INTO audits (name, user_id)
-     VALUES ($1, $2)
+    `INSERT INTO audits (name, user_id, status)
+     VALUES ($1, $2, 'started')
      RETURNING *`,
     [name, userId],
   );
@@ -433,6 +41,28 @@ const FRONT_TO_DB_KEY = {
   secondaryInsuranceBinNumber: "secondary_bin",
   secondaryInsurancePaid: "secondary_paid",
   brand: "brand",
+};
+
+// ── Auto-refresh audit status based on uploaded files ──────────────────────
+export const refreshAuditStatus = async (auditId) => {
+  const invCheck = await pool.query(
+    `SELECT COUNT(*) FROM audit_inventory_files WHERE audit_id = $1`,
+    [auditId],
+  );
+  const wsCheck = await pool.query(
+    `SELECT COUNT(*) FROM wholesaler_files WHERE audit_id = $1`,
+    [auditId],
+  );
+
+  const hasInventory = parseInt(invCheck.rows[0].count) > 0;
+  const hasWholesaler = parseInt(wsCheck.rows[0].count) > 0;
+
+  const newStatus = hasInventory && hasWholesaler ? "ready" : "started";
+
+  await pool.query(`UPDATE audits SET status = $1 WHERE id = $2`, [
+    newStatus,
+    auditId,
+  ]);
 };
 
 function toDbHeaderMapping(frontMapping = {}) {
@@ -513,6 +143,26 @@ export const saveInventoryFile = async (auditId, filename, headerMapping) => {
   ]);
   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
 
+  // ✅ Clean old inventory data (replace behavior)
+  await pool.query(`DELETE FROM inventory_rows WHERE audit_id = $1`, [auditId]);
+  const oldInvFiles = await pool.query(
+    `SELECT file_name FROM audit_inventory_files WHERE audit_id = $1`,
+    [auditId],
+  );
+  for (const row of oldInvFiles.rows) {
+    const oldPath = path.join(
+      process.cwd(),
+      "uploads/inventory",
+      row.file_name,
+    );
+    try {
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    } catch (e) {}
+  }
+  await pool.query(`DELETE FROM audit_inventory_files WHERE audit_id = $1`, [
+    auditId,
+  ]);
+
   const result = await pool.query(
     `
     INSERT INTO audit_inventory_files (audit_id, file_name)
@@ -549,9 +199,7 @@ export const saveInventoryFile = async (auditId, filename, headerMapping) => {
     await insertInventoryRows(auditId, records);
   }
 
-  await pool.query(`UPDATE audits SET status = 'started' WHERE id = $1`, [
-    auditId,
-  ]);
+  await refreshAuditStatus(auditId);
 
   return result.rows[0];
 };
@@ -605,7 +253,28 @@ export const insertInventoryRows = async (auditId, rows) => {
       );
     }
 
+    // 🔽 ADD THIS AFTER INSERT LOOP (before COMMIT or after COMMIT)
+    await client.query(
+      `
+  INSERT INTO master_sheet_queue (bin, pcn, grp)
+  SELECT DISTINCT i.primary_bin, i.primary_pcn, i.primary_group
+  FROM inventory_rows i
+  LEFT JOIN master_sheet m
+    ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
+   AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
+   AND (
+         (i.primary_group IS NULL AND m.grp IS NULL)
+         OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
+       )
+  WHERE i.audit_id = $1
+    AND m.id IS NULL
+    AND i.primary_bin IS NOT NULL
+  ON CONFLICT DO NOTHING
+  `,
+      [auditId],
+    );
     await client.query("COMMIT");
+
     console.log(`✅ All ${rows.length} inventory rows inserted`);
     return { inserted: rows.length };
   } catch (err) {
@@ -621,6 +290,28 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
     auditId,
   ]);
   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
+
+  // ✅ Clean old wholesaler data (replace behavior)
+  await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [
+    auditId,
+  ]);
+  const oldWsFiles = await pool.query(
+    `SELECT file_name FROM wholesaler_files WHERE audit_id = $1`,
+    [auditId],
+  );
+  for (const row of oldWsFiles.rows) {
+    const oldPath = path.join(
+      process.cwd(),
+      "uploads/wholesalers",
+      row.file_name,
+    );
+    try {
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    } catch (e) {}
+  }
+  await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [
+    auditId,
+  ]);
 
   const results = [];
 
@@ -750,11 +441,14 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
     results.push(fileInsert.rows[0]);
   }
 
+  await refreshAuditStatus(auditId);
+
   return results;
 };
 
-export const getAudits = async () => {
-  const result = await pool.query(`
+export const getAudits = async (userId) => {
+  const result = await pool.query(
+    `
     SELECT
       a.id,
       a.name,
@@ -766,8 +460,11 @@ export const getAudits = async () => {
       a.created_at,
       (SELECT COUNT(*) FROM audit_inventory_files f WHERE f.audit_id = a.id) AS inventory_files_count
     FROM audits a
+    WHERE a.user_id = $1
     ORDER BY a.created_at DESC
-  `);
+  `,
+    [userId],
+  );
 
   return result.rows;
 };
@@ -816,17 +513,36 @@ export const getInventoryRows = async (auditId) => {
 };
 
 export const deleteAudit = async (auditId) => {
-  const filesRes = await pool.query(
+  // 1. Get all physical file names BEFORE deleting DB rows
+  const invFiles = await pool.query(
     `SELECT file_name FROM audit_inventory_files WHERE audit_id = $1`,
     [auditId],
   );
+  const wsFiles = await pool.query(
+    `SELECT file_name FROM wholesaler_files WHERE audit_id = $1`,
+    [auditId],
+  );
 
+  // 2. Delete child rows explicitly (safe even with CASCADE)
+  await pool.query(`DELETE FROM inventory_rows WHERE audit_id = $1`, [auditId]);
+  await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [
+    auditId,
+  ]);
+  await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [
+    auditId,
+  ]);
+  await pool.query(`DELETE FROM audit_inventory_files WHERE audit_id = $1`, [
+    auditId,
+  ]);
+
+  // 3. Delete the audit itself
   const result = await pool.query(
     `DELETE FROM audits WHERE id = $1 RETURNING *`,
     [auditId],
   );
 
-  for (const row of filesRes.rows) {
+  // 4. Delete physical inventory files
+  for (const row of invFiles.rows) {
     const filePath = path.join(
       process.cwd(),
       "uploads/inventory",
@@ -835,9 +551,162 @@ export const deleteAudit = async (auditId) => {
     try {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     } catch (e) {
-      console.warn("Failed to delete file:", filePath, e.message);
+      console.warn("Failed to delete inventory file:", filePath, e.message);
+    }
+  }
+
+  // 5. Delete physical wholesaler files
+  for (const row of wsFiles.rows) {
+    const filePath = path.join(
+      process.cwd(),
+      "uploads/wholesalers",
+      row.file_name,
+    );
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+      console.warn("Failed to delete wholesaler file:", filePath, e.message);
     }
   }
 
   return result.rows[0] || null;
+};
+
+export const getDrugWholesalerDetail = async (
+  auditId,
+  ndc,
+  { outsideRange = false, includeBilled = false } = {},
+) => {
+  const normalizeNDC = (val) => {
+    if (!val) return null;
+    const digits = String(val).replace(/\D/g, "");
+    return digits.padStart(11, "0");
+  };
+
+  const normalizedDigits = normalizeNDC(ndc);
+
+  const auditRes = await pool.query(
+    `SELECT id, wholesaler_start_date, wholesaler_end_date
+     FROM audits
+     WHERE id = $1`,
+    [auditId],
+  );
+  const audit = auditRes.rows[0];
+
+  const summaryRes = await pool.query(
+    `SELECT
+       MAX(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\).*$', '')) AS drug_name,
+       SUM(quantity) AS total_billed,
+       MAX(package_size) AS package_size
+     FROM inventory_rows
+     WHERE audit_id = $1
+       AND RIGHT(LPAD(REGEXP_REPLACE(TRIM(ndc), '[^0-9]', '', 'g'), 11, '0'), 10)
+           = RIGHT($2, 10)`,
+    [auditId, normalizedDigits],
+  );
+  const summary = summaryRes.rows[0];
+
+  // ✅ NO DATE FILTER HERE
+  const wsRes = await pool.query(
+    `SELECT
+       wr.id,
+       wf.wholesaler_name AS type,
+       TO_CHAR(wr.invoice_date, 'MM/DD/YYYY') AS invoice_date,
+       wr.quantity,
+       wr.unit_cost,
+       wr.total_cost,
+       'wholesaler' AS source
+     FROM wholesaler_rows wr
+     JOIN wholesaler_files wf ON wf.id = wr.wholesaler_file_id
+     WHERE wr.audit_id = $1
+       AND RIGHT(LPAD(REGEXP_REPLACE(TRIM(wr.ndc), '[^0-9]', '', 'g'), 11, '0'), 10)
+           = RIGHT($2, 10)
+     ORDER BY wr.invoice_date ASC NULLS LAST, wr.id ASC`,
+    [auditId, normalizedDigits],
+  );
+
+  let allRows = wsRes.rows;
+
+  // ✅ APPLY DATE FILTER ONLY IF USER ASKS (OPTIONAL)
+  if (outsideRange) {
+    allRows = allRows.filter((row) => {
+      if (!row.invoice_date) return true;
+
+      const inv = new Date(row.invoice_date);
+      const start = audit?.wholesaler_start_date
+        ? new Date(audit.wholesaler_start_date)
+        : null;
+      const end = audit?.wholesaler_end_date
+        ? new Date(audit.wholesaler_end_date)
+        : null;
+
+      if (!start || !end) return true;
+
+      return inv < start || inv > end;
+    });
+  }
+
+  if (includeBilled) {
+    const billedRes = await pool.query(
+      `SELECT
+         ir.id,
+         'BILLED' AS type,
+         ir.date_filled AS invoice_date,
+      (
+  ir.quantity::numeric /
+  NULLIF(
+    NULLIF(REGEXP_REPLACE(ir.package_size, '[^0-9.]', '', 'g'), '')::numeric,
+    0
+  )
+) AS quantity,
+         NULL AS unit_cost,
+         NULL AS total_cost,
+         'inventory' AS source
+       FROM inventory_rows ir
+       WHERE ir.audit_id = $1
+         AND RIGHT(LPAD(REGEXP_REPLACE(TRIM(ir.ndc), '[^0-9]', '', 'g'), 11, '0'), 10)
+             = RIGHT($2, 10)
+       ORDER BY ir.date_filled ASC NULLS LAST, ir.id ASC`,
+      [auditId, normalizedDigits],
+    );
+
+    allRows = [...allRows, ...billedRes.rows].sort((a, b) => {
+      if (!a.invoice_date) return 1;
+      if (!b.invoice_date) return -1;
+      return new Date(a.invoice_date) - new Date(b.invoice_date);
+    });
+  }
+
+  let rt = 0;
+  const rows = allRows.map((row, idx) => {
+    rt += Number(row.quantity ?? 0);
+    return {
+      index: idx + 1,
+      type: row.type,
+      source: row.source,
+      invoice_date: row.invoice_date,
+      quantity: Number(row.quantity ?? 0),
+      unit_cost: row.unit_cost != null ? Number(row.unit_cost) : null,
+      total_cost: row.total_cost != null ? Number(row.total_cost) : null,
+      rt,
+    };
+  });
+
+  const total_qty = wsRes.rows.reduce(
+    (sum, r) => sum + Number(r.quantity ?? 0),
+    0,
+  );
+
+  return {
+    ndc: normalizedDigits,
+    drug_name: summary?.drug_name ?? "",
+    total_qty,
+    total_billed: Number(summary?.total_billed ?? 0),
+    package_size: summary?.package_size ?? null,
+    audit: {
+      wholesaler_start_date: audit?.wholesaler_start_date ?? null,
+      wholesaler_end_date: audit?.wholesaler_end_date ?? null,
+    },
+    rows,
+  };
 };

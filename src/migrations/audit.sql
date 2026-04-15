@@ -21,9 +21,10 @@ CREATE TABLE audit_inventory_files (
 );
 
 CREATE TABLE IF NOT EXISTS inventory_rows (
+  
     id BIGSERIAL PRIMARY KEY,
     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
-
+    
     ndc TEXT,
     rx_number TEXT,
     status TEXT,
@@ -31,26 +32,20 @@ CREATE TABLE IF NOT EXISTS inventory_rows (
     drug_name TEXT,
     quantity INTEGER,
     package_size TEXT,
-
+   
     primary_bin TEXT,
     primary_paid NUMERIC,
     secondary_bin TEXT,
     secondary_paid NUMERIC,
-
+    primary_pcn TEXT,
+    primary_group TEXT,
     brand TEXT
 );
-
--- CREATE TABLE audit_wholesaler_files (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
---     wholesaler_files JSONB NOT NULL DEFAULT '[]',
---     uploaded_at TIMESTAMP DEFAULT NOW()
--- );
 
 
 CREATE TABLE wholesaler_files (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
+    
     audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
 
     wholesaler_name TEXT,
@@ -86,6 +81,7 @@ CREATE TABLE users (
   password TEXT,
   role TEXT DEFAULT 'user',
   is_verified BOOLEAN DEFAULT false,
+  status TEXT CHECK (status IN ('active','inactive')) DEFAULT 'inactive',
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -170,4 +166,55 @@ CREATE TABLE pharmacy_details (
 
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE TABLE suppliers (
+  id UUID PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE supplier_mappings (
+  id UUID PRIMARY KEY,
+  supplier_id UUID UNIQUE REFERENCES suppliers(id) ON DELETE CASCADE,
+  mappings JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE master_sheet_queue (
+    id SERIAL PRIMARY KEY,
+
+    bin VARCHAR(20) NOT NULL,
+    pcn VARCHAR(50),
+    grp VARCHAR(50),
+
+    pbm_name VARCHAR(100),
+    payer_type VARCHAR(50),
+
+    status VARCHAR(20) DEFAULT 'pending', -- pending | added
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE feedbacks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  status TEXT, -- trialing, active, past_due, canceled
+  current_period_end TIMESTAMP,
+  trial_end TIMESTAMP,
+  grace_period_end TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
 );
