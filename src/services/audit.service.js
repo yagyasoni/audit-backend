@@ -91,7 +91,9 @@ const cleanInt = (v) => {
 
 const cleanDate = (v) => {
   if (!v) return null;
-  const s = String(v).trim();
+  const s = String(v)
+    .trim()
+    .replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
@@ -101,6 +103,35 @@ const cleanDate = (v) => {
     const dd = String(m[2]).padStart(2, "0");
     const yy = m[3];
     return `${yy}-${mm}-${dd}`;
+  }
+
+  return null;
+};
+
+const cleanDateNew = (v) => {
+  if (!v) return null;
+
+  let s = String(v).trim();
+
+  // Remove time part (handles space + T formats)
+  s = s.replace(/([T\s]\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)$/i, "");
+
+  // Case 1: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Case 2: MM/DD/YYYY
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const mm = String(m[1]).padStart(2, "0");
+    const dd = String(m[2]).padStart(2, "0");
+    const yy = m[3];
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  // 🔥 Fallback (VERY IMPORTANT)
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split("T")[0];
   }
 
   return null;
@@ -225,7 +256,7 @@ export const insertInventoryRows = async (auditId, rows) => {
           r.ndc || null,
           r.rx_number || null,
           r.status || null,
-          r.date_filled || null,
+          cleanDate(r.date_filled),
           r.drug_name || null,
           r.quantity ? parseInt(r.quantity) : null,
           r.package_size || null,
@@ -257,7 +288,7 @@ export const insertInventoryRows = async (auditId, rows) => {
     await client.query(
       `
   INSERT INTO master_sheet_queue (bin, pcn, grp)
-  SELECT DISTINCT i.primary_bin, i.primary_pcn, i.primary_group
+  SELECT DISTINCT LPAD(TRIM(i.primary_bin), 6, '0'), i.primary_pcn, i.primary_group
   FROM inventory_rows i
   LEFT JOIN master_sheet m
     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
@@ -343,6 +374,19 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
     const mapping = fileObj.headerMapping || {};
     console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
+    if (records.length > 0) {
+      const testInvoice = mapping.invoiceDate
+        ? records[0][mapping.invoiceDate]
+        : "NO_MAPPING_KEY";
+      console.log("INVOICE DATE DEBUG:", {
+        mappingKey: mapping.invoiceDate,
+        rawValue: testInvoice,
+        cleaned: mapping.invoiceDate
+          ? cleanDateNew(records[0][mapping.invoiceDate])
+          : null,
+        csvHeaders: Object.keys(records[0]),
+      });
+    }
     console.log(
       "SAMPLE ROW KEYS:",
       records.length > 0 ? Object.keys(records[0]) : [],
@@ -409,7 +453,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             quantity,
             unitCost,
             totalCost,
-            cleanDate(invoiceDate),
+            cleanDateNew(invoiceDate),
           );
 
           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
