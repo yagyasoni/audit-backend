@@ -840,26 +840,57 @@ export const getInventoryDetail = async (req, res) => {
   }
 };
 
+// export const getWholesalerDetail = async (req, res) => {
+//   try {
+//     const { id, ndc } = req.params;
+
+//     const result = await pool.query(
+//       `SELECT w.*, wf.wholesaler_name
+//       FROM wholesaler_rows w
+//       LEFT JOIN wholesaler_files wf ON w.wholesaler_file_id = wf.id
+//       WHERE w.audit_id = $1
+//         AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
+//       ORDER BY w.id ASC`,
+//       [id, ndc],
+//     );
+
+//     // Map to consistent field names
+//     const rows = result.rows.map((r) => ({
+//       type: r.wholesaler_name || r.type || "MCKESSON",
+//       date_ordered:
+//         r.invoice_date || r.date || r.order_date || r.ship_date || "",
+//       quantity: r.quantity || 0,
+//     }));
+
+//     return res.json(rows);
+//   } catch (error) {
+//     console.error("Wholesaler detail error:", error);
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
+
 export const getWholesalerDetail = async (req, res) => {
   try {
     const { id, ndc } = req.params;
 
     const result = await pool.query(
-      `SELECT w.*, wf.wholesaler_name
-      FROM wholesaler_rows w
-      LEFT JOIN wholesaler_files wf ON w.wholesaler_file_id = wf.id
-      WHERE w.audit_id = $1
-        AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
-      ORDER BY w.id ASC`,
+      `SELECT
+         w.id,
+         wf.wholesaler_name,
+         TO_CHAR(w.invoice_date, 'YYYY-MM-DD') AS invoice_date,
+         w.quantity
+       FROM wholesaler_rows w
+       LEFT JOIN wholesaler_files wf ON w.wholesaler_file_id = wf.id
+       WHERE w.audit_id = $1
+         AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
+       ORDER BY w.invoice_date ASC NULLS LAST, w.id ASC`,
       [id, ndc],
     );
 
-    // Map to consistent field names
     const rows = result.rows.map((r) => ({
-      type: r.wholesaler_name || r.type || "MCKESSON",
-      date_ordered:
-        r.invoice_date || r.date || r.order_date || r.ship_date || "",
-      quantity: r.quantity || 0,
+      type: r.wholesaler_name || "MCKESSON",
+      date_ordered: r.invoice_date || "",
+      quantity: Number(r.quantity ?? 0),
     }));
 
     return res.json(rows);
