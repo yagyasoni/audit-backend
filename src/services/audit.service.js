@@ -89,18 +89,103 @@ const cleanInt = (v) => {
   return n === null ? null : Math.trunc(n);
 };
 
-const cleanDate = (v) => {
-  if (!v) return null;
-  const s = String(v).trim();
+// const cleanDate = (v) => {
+//   if (!v) return null;
+//   const s = String(v)
+//     .trim()
+//     .replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
 
+//   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+//   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+//   if (m) {
+//     const mm = String(m[1]).padStart(2, "0");
+//     const dd = String(m[2]).padStart(2, "0");
+//     const yy = m[3];
+//     return `${yy}-${mm}-${dd}`;
+//   }
+
+//   return null;
+// };
+
+const cleanDate = (v) => {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // ISO format YYYY-MM-DD (with or without time)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  // M/D/YYYY or MM/DD/YYYY
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const mm = String(m[1]).padStart(2, "0");
+    const dd = String(m[2]).padStart(2, "0");
+    return `${m[3]}-${mm}-${dd}`;
+  }
+
+  // M/D/YY — 2-digit year
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (m) {
+    const mm = String(m[1]).padStart(2, "0");
+    const dd = String(m[2]).padStart(2, "0");
+    const yy = parseInt(m[3], 10);
+    const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // M-D-YYYY or MM-DD-YYYY
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (m) {
+    const mm = String(m[1]).padStart(2, "0");
+    const dd = String(m[2]).padStart(2, "0");
+    return `${m[3]}-${mm}-${dd}`;
+  }
+
+  // Excel serial number (pure digits, sane range: ~1927–2119)
+  if (/^\d+$/.test(s)) {
+    const serial = parseInt(s, 10);
+    if (serial >= 10000 && serial <= 80000) {
+      const utcMs = (serial - 25569) * 86400 * 1000;
+      const d = new Date(utcMs);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+    }
+    // Pure digits but out of Excel-serial range — reject, don't treat as year
+    return null;
+  }
+
+  return null;
+};
+
+const cleanDateNew = (v) => {
+  if (!v) return null;
+
+  let s = String(v).trim();
+
+  // Remove time part (handles space + T formats)
+  s = s.replace(/([T\s]\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?)$/i, "");
+
+  // Case 1: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+  // Case 2: MM/DD/YYYY
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
     const mm = String(m[1]).padStart(2, "0");
     const dd = String(m[2]).padStart(2, "0");
     const yy = m[3];
     return `${yy}-${mm}-${dd}`;
+  }
+
+  // 🔥 Fallback (VERY IMPORTANT)
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split("T")[0];
   }
 
   return null;
@@ -225,7 +310,7 @@ export const insertInventoryRows = async (auditId, rows) => {
           r.ndc || null,
           r.rx_number || null,
           r.status || null,
-          r.date_filled || null,
+          cleanDate(r.date_filled),
           r.drug_name || null,
           r.quantity ? parseInt(r.quantity) : null,
           r.package_size || null,
@@ -257,7 +342,7 @@ export const insertInventoryRows = async (auditId, rows) => {
     await client.query(
       `
   INSERT INTO master_sheet_queue (bin, pcn, grp)
-  SELECT DISTINCT i.primary_bin, i.primary_pcn, i.primary_group
+  SELECT DISTINCT LPAD(TRIM(i.primary_bin), 6, '0'), i.primary_pcn, i.primary_group
   FROM inventory_rows i
   LEFT JOIN master_sheet m
     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
@@ -343,6 +428,19 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
     const mapping = fileObj.headerMapping || {};
     console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
+    if (records.length > 0) {
+      const testInvoice = mapping.invoiceDate
+        ? records[0][mapping.invoiceDate]
+        : "NO_MAPPING_KEY";
+      console.log("INVOICE DATE DEBUG:", {
+        mappingKey: mapping.invoiceDate,
+        rawValue: testInvoice,
+        cleaned: mapping.invoiceDate
+          ? cleanDateNew(records[0][mapping.invoiceDate])
+          : null,
+        csvHeaders: Object.keys(records[0]),
+      });
+    }
     console.log(
       "SAMPLE ROW KEYS:",
       records.length > 0 ? Object.keys(records[0]) : [],
@@ -409,7 +507,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             quantity,
             unitCost,
             totalCost,
-            cleanDate(invoiceDate),
+            cleanDateNew(invoiceDate),
           );
 
           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;

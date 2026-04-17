@@ -279,13 +279,33 @@ router.delete("/excel/row/:id", async (req, res) => {
   }
 });
 
+// router.get("/master-sheet-queue", async (req, res) => {
+//   try {
+//     const result = await pool.query(`
+//       SELECT id, bin, pcn, grp, pbm_name, payer_type
+//       FROM master_sheet_queue
+//       WHERE status = 'pending'
+//       ORDER BY id ASC
+//     `);
+
+//     return res.status(200).json({
+//       rows: result.rows,
+//       total: result.rows.length,
+//     });
+//   } catch (err) {
+//     console.error("[GET /master-sheet-queue]", err);
+//     return res.status(500).json({ error: "Failed to fetch queue." });
+//   }
+// });
+
 router.get("/master-sheet-queue", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, bin, pcn, grp, pbm_name, payer_type
+      SELECT DISTINCT ON (bin, pcn, grp)
+        id, bin, pcn, grp, pbm_name, payer_type
       FROM master_sheet_queue
       WHERE status = 'pending'
-      ORDER BY id ASC
+      ORDER BY bin, pcn, grp, id ASC
     `);
 
     return res.status(200).json({
@@ -354,7 +374,7 @@ router.post("/master-sheet-queue/:id/add", async (req, res) => {
     // 3. INSERT into master_sheet (NO UPDATE EVER)
     await client.query(
       `INSERT INTO master_sheet (bin, pcn, grp, pbm_name, payer_type)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES (LPAD($1, 6, '0'), $2, $3, $4, $5)
        ON CONFLICT (bin, pcn, grp) DO NOTHING`,
       [row.bin, row.pcn, row.grp, row.pbm_name, row.payer_type],
     );

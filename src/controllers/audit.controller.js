@@ -67,14 +67,14 @@ export const getFullReport = async (req, res) => {
   COALESCE(w.total_cost, 0) AS cost,
   COALESCE(w.total_ordered, 0) - SUM(i.quantity) AS total_shortage,
 
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'horizon' THEN i.quantity ELSE 0 END), 0) AS horizon,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'express scripts' THEN i.quantity ELSE 0 END), 0) AS express,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'caremark' THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('optum','optumrx') THEN i.quantity ELSE 0 END), 0) AS optumrx,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'humana' THEN i.quantity ELSE 0 END), 0) AS humana,
+COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'horizon' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS horizon,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'express scripts' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS express,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'caremark' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('optum','optumrx') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS optumrx,
+  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'humana' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS humana,
 COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'medicaid' THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
 COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'medicare' THEN i.quantity ELSE 0 END), 0) AS medicare,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) ILIKE '%southern scripts%' OR LOWER(pbm.pbm_name) ILIKE '%liviniti%' THEN i.quantity ELSE 0 END), 0) AS ssc,
+COALESCE(SUM(CASE WHEN (LOWER(pbm.pbm_name) ILIKE '%southern scripts%' OR LOWER(pbm.pbm_name) ILIKE '%liviniti%') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS ssc,
   COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('medimpact') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS pdmi,
 COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) IN ('coupon','copay card') THEN i.quantity ELSE 0 END), 0) AS coupon,
 COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'government/military' THEN i.quantity ELSE 0 END), 0) AS gov_military
@@ -83,35 +83,21 @@ FROM inventory_rows i
 
 -- ✅ SINGLE lateral with 3-level COALESCE fallback (fixes the 2x duplication)
 LEFT JOIN LATERAL (
-  SELECT 
-    COALESCE(
-      (SELECT pbm_name FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-         AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-         AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
-       LIMIT 1),
-      (SELECT pbm_name FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-         AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-       LIMIT 1),
-      (SELECT pbm_name FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-       LIMIT 1)
-    ) AS pbm_name,
-    COALESCE(
-      (SELECT payer_type FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-         AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-         AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
-       LIMIT 1),
-      (SELECT payer_type FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-         AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-       LIMIT 1),
-      (SELECT payer_type FROM master_sheet m
-       WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-       LIMIT 1)
-    ) AS payer_type
+  SELECT ms.pbm_name, ms.payer_type
+  FROM (
+    SELECT pbm_name, payer_type, 1 AS priority FROM master_sheet m
+     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+       AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
+    UNION ALL
+    SELECT pbm_name, payer_type, 2 FROM master_sheet m
+     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+    UNION ALL
+    SELECT pbm_name, payer_type, 3 FROM master_sheet m
+     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+    ORDER BY priority LIMIT 1
+  ) ms
 ) pbm ON true
 
 LEFT JOIN (
@@ -383,7 +369,7 @@ export const getInventoryDetail = async (req, res) => {
     const result = await pool.query(
       `SELECT
         i.rx_number,
-        TO_CHAR(i.date_filled, 'MM/DD/YYYY') AS date_filled,
+        TO_CHAR(i.date_filled, 'YYYY-MM-DD') AS date_filled,
         i.quantity,
         'PRIMERX' AS type,
         i.primary_bin AS pri_bin,
