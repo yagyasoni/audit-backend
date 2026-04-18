@@ -709,7 +709,7 @@ export const getDrugWholesalerDetail = async (
     `SELECT
        wr.id,
        wf.wholesaler_name AS type,
-       TO_CHAR(wr.invoice_date, 'MM/DD/YYYY') AS invoice_date,
+       TO_CHAR(wr.invoice_date, 'YYYY-MM-DD') AS invoice_date,
        wr.quantity,
        wr.unit_cost,
        wr.total_cost,
