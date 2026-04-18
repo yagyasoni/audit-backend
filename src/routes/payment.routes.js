@@ -294,7 +294,10 @@ router.post("/create-checkout-session", async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
-
+      payment_method_collection: "always", // 🔥 ADD THIS
+      metadata: {
+        userId: String(userId), // 🔥 FIXED
+      },
       line_items: [
         {
           // price: "price_1TJAu7BsVpwEk4PVFt7kEy8V",
@@ -305,9 +308,10 @@ router.post("/create-checkout-session", async (req, res) => {
 
       subscription_data: {
         trial_period_days: 7,
-        metadata: {
-          userId: String(userId), // 🔥 FIXED
-        },
+        // trial_end: Math.floor(Date.now() / 1000) + 60, // 2 minutes
+        // metadata: {
+        //   userId: String(userId), // 🔥 FIXED
+        // },
       },
 
       success_url: "https://www.auditprorx.com/Mainpage",
@@ -316,9 +320,16 @@ router.post("/create-checkout-session", async (req, res) => {
 
     return res.json({ url: session.url });
   } catch (error) {
+    // console.error("❌ Stripe session error:", error);
+    // return res.status(500).json({
+    //   error: "Failed to create checkout session",
+    // });
     console.error("❌ Stripe session error:", error);
     return res.status(500).json({
       error: "Failed to create checkout session",
+      message: error.message,
+      type: error.type,
+      raw: error.raw?.message,
     });
   }
 });
@@ -396,9 +407,23 @@ router.get("/subscription/:userId", async (req, res) => {
       return res.json({ subscription: null });
     }
 
-    return res.json({
-      subscription: result.rows[0],
-    });
+    // return res.json({
+    //   subscription: result.rows[0],
+    // });
+
+    const subscription = result.rows[0];
+
+    // ← fetch cancel_at_period_end live from Stripe
+    if (subscription.stripe_subscription_id) {
+      const stripeSub = await stripe.subscriptions.retrieve(
+        subscription.stripe_subscription_id,
+      );
+      subscription.cancel_at_period_end = stripeSub.cancel_at_period_end;
+    } else {
+      subscription.cancel_at_period_end = false;
+    }
+
+    return res.json({ subscription });
   } catch (err) {
     console.error("❌ Fetch error:", err);
     res.status(500).json({
@@ -460,6 +485,29 @@ router.post("/admin/update-subscription", async (req, res) => {
     return res.status(500).json({
       error: "Failed to update subscription",
     });
+  }
+});
+
+router.post("/renew-subscription", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const result = await pool.query(
+      `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
+      [userId],
+    );
+
+    const subId = result.rows[0]?.stripe_subscription_id;
+    if (!subId) return res.status(404).json({ error: "No subscription found" });
+
+    // Reactivate the subscription
+    await stripe.subscriptions.update(subId, {
+      cancel_at_period_end: false,
+    });
+
+    return res.json({ message: "Subscription successfully set to renew." });
+  } catch (error) {
+    console.error("Renewal error:", error);
+    res.status(500).json({ error: "Failed to renew subscription" });
   }
 });
 

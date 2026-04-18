@@ -1,4 +1,3 @@
-
 import express from "express";
 import Stripe from "stripe";
 import { pool } from "../config/db.js";
@@ -28,50 +27,83 @@ router.post(
 
     try {
       switch (event.type) {
+        // case "checkout.session.completed": {
+        //   const session = event.data.object;
+
+        //   console.log(
+        //     "🔍 SESSION DUMP:",
+        //     JSON.stringify(
+        //       {
+        //         id: session.id,
+        //         customer: session.customer,
+        //         subscription: session.subscription,
+        //         status: session.status,
+        //       },
+        //       null,
+        //       2,
+        //     ),
+        //   );
+
+        //   if (!session.subscription) {
+        //     console.log(
+        //       "⚠️ No subscription on session yet — trial race. subscription.created will handle it.",
+        //     );
+        //     break;
+        //   }
+
+        //   // Fetch fresh subscription
+        //   const freshSub = await stripe.subscriptions.retrieve(
+        //     session.subscription,
+        //   );
+        //   console.log(
+        //     "🔍 FRESH SUB FROM checkout.session.completed:",
+        //     JSON.stringify(
+        //       {
+        //         id: freshSub.id,
+        //         status: freshSub.status,
+        //         trial_end: freshSub.trial_end,
+        //         current_period_end: freshSub.current_period_end,
+        //         customer: freshSub.customer,
+        //       },
+        //       null,
+        //       2,
+        //     ),
+        //   );
+
+        //   await upsertSubscription(freshSub, "customer");
+        //   break;
+        // }
+
         case "checkout.session.completed": {
           const session = event.data.object;
+          const userId = session.metadata?.userId; // This is the link to your manual record
 
-          console.log(
-            "🔍 SESSION DUMP:",
-            JSON.stringify(
-              {
-                id: session.id,
-                customer: session.customer,
-                subscription: session.subscription,
-                status: session.status,
-              },
-              null,
-              2,
-            ),
-          );
-
-          if (!session.subscription) {
-            console.log(
-              "⚠️ No subscription on session yet — trial race. subscription.created will handle it.",
+          if (session.subscription) {
+            const freshSub = await stripe.subscriptions.retrieve(
+              session.subscription,
             );
-            break;
+
+            // 🔥 THE FIX: Use userId to link Stripe data to your existing manual record
+            await pool.query(
+              `UPDATE subscriptions 
+       SET stripe_customer_id = $1, 
+           stripe_subscription_id = $2, 
+           status = $3 
+       WHERE user_id = $4`,
+              [session.customer, freshSub.id, freshSub.status, userId],
+            );
+
+            await upsertSubscription(freshSub, "subscription");
+          } else {
+            // ⚠️ Race condition safety net — subscription not attached yet
+            // customer.subscription.created will fire right after and complete the link
+            await pool.query(
+              `UPDATE subscriptions 
+       SET stripe_customer_id = $1
+       WHERE user_id = $2`,
+              [session.customer, userId],
+            );
           }
-
-          // Fetch fresh subscription
-          const freshSub = await stripe.subscriptions.retrieve(
-            session.subscription,
-          );
-          console.log(
-            "🔍 FRESH SUB FROM checkout.session.completed:",
-            JSON.stringify(
-              {
-                id: freshSub.id,
-                status: freshSub.status,
-                trial_end: freshSub.trial_end,
-                current_period_end: freshSub.current_period_end,
-                customer: freshSub.customer,
-              },
-              null,
-              2,
-            ),
-          );
-
-          await upsertSubscription(freshSub, "customer");
           break;
         }
 
@@ -198,7 +230,7 @@ router.post(
           if (result.rows.length > 0 && result.rows[0].current_period_end) {
             const currentEnd = new Date(result.rows[0].current_period_end);
             const graceEnd = new Date(currentEnd);
-            graceEnd.setDate(graceEnd.getDate() + 10);
+            graceEnd.setDate(graceEnd.getDate() + 30);
 
             await pool.query(
               `UPDATE subscriptions SET status = 'past_due', grace_period_end = $1 WHERE stripe_subscription_id = $2`,
@@ -240,12 +272,17 @@ async function upsertSubscription(sub, lookupBy) {
   const periodEnd = sub.current_period_end ?? null;
 
   // Grace period only applies AFTER a paid period — not during trial
+  // const gracePeriod =
+  //   sub.status === "trialing"
+  //     ? null
+  //     : periodEnd
+  //       ? new Date((periodEnd + 30 * 24 * 60 * 60) * 1000)
+  //       : null;
+
   const gracePeriod =
-    sub.status === "trialing"
-      ? null
-      : periodEnd
-        ? new Date((periodEnd + 10 * 24 * 60 * 60) * 1000)
-        : null;
+    sub.status === "past_due"
+      ? new Date((periodEnd + 30 * 24 * 60 * 60) * 1000)
+      : null;
 
   console.log("💾 Writing to DB:", {
     id: sub.id,
@@ -266,7 +303,7 @@ async function upsertSubscription(sub, lookupBy) {
         current_period_end     = to_timestamp($3),
         trial_end              = to_timestamp($4),
         grace_period_end       = $5
-      WHERE stripe_customer_id = $6
+      WHERE stripe_customer_id = $6 OR user_id = (SELECT user_id FROM subscriptions WHERE stripe_customer_id = $6 LIMIT 1)
       RETURNING *
       `,
       [sub.id, sub.status, periodEnd, trialEnd, gracePeriod, sub.customer],

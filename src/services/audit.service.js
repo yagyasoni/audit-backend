@@ -507,7 +507,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             quantity,
             unitCost,
             totalCost,
-            cleanDateNew(invoiceDate),
+            cleanDate(invoiceDate),
           );
 
           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
