@@ -16,6 +16,8 @@ import {
   getDrugWholesalerDetail,
   getInventoryDetail,
   getWholesalerDetail,
+  getCommunityData,
+  getDrugLookup,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -78,5 +80,7 @@ router.put("/:id/dates", updateAuditDates);
 router.get("/:id/drug-detail/:ndc", getDrugWholesalerDetail);
 router.get("/:id/inventory-detail/:ndc", getInventoryDetail);
 router.get("/:id/wholesaler-detail/:ndc", getWholesalerDetail);
+router.get("/community/:ndc", getCommunityData);
+router.get("/:id/drug-lookup", getDrugLookup);
 
 export default router;

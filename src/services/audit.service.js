@@ -109,9 +109,14 @@ const cleanInt = (v) => {
 // };
 
 const cleanDate = (v) => {
+  // if (v === null || v === undefined || v === "") return null;
+  // const s = String(v).trim();
   if (v === null || v === undefined || v === "") return null;
-  const s = String(v).trim();
+  let s = String(v).trim();
   if (!s) return null;
+
+  // Strip trailing time like " 0:00", " 12:30:00", " 3:45 PM"
+  s = s.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
 
   // ISO format YYYY-MM-DD (with or without time)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
@@ -339,23 +344,88 @@ export const insertInventoryRows = async (auditId, rows) => {
     }
 
     // 🔽 ADD THIS AFTER INSERT LOOP (before COMMIT or after COMMIT)
+    //   await client.query(
+    //     `
+    // INSERT INTO master_sheet_queue (bin, pcn, grp)
+    // SELECT DISTINCT LPAD(TRIM(i.primary_bin), 6, '0'), i.primary_pcn, i.primary_group
+    // FROM inventory_rows i
+    // LEFT JOIN master_sheet m
+    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
+    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
+    //  AND (
+    //        (i.primary_group IS NULL AND m.grp IS NULL)
+    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
+    //      )
+    // WHERE i.audit_id = $1
+    //   AND m.id IS NULL
+    //   AND i.primary_bin IS NOT NULL
+    // ON CONFLICT DO NOTHING
+    // `,
+    //     [auditId],
+    //   );
+    //   await client.query(
+    //     `
+    // INSERT INTO master_sheet_queue (bin, pcn, grp)
+    // SELECT DISTINCT
+    //   LPAD(TRIM(i.primary_bin), 6, '0'),
+    //   i.primary_pcn,
+    //   i.primary_group
+
+    // FROM inventory_rows i
+
+    // LEFT JOIN master_sheet m
+    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
+    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
+    //  AND (
+    //        (i.primary_group IS NULL AND m.grp IS NULL)
+    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
+    //      )
+
+    // LEFT JOIN master_sheet_queue q
+    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
+    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(q.pcn))
+    //  AND (
+    //        (i.primary_group IS NULL AND q.grp IS NULL)
+    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(q.grp))
+    //      )
+
+    // WHERE i.audit_id = $1
+    //   AND m.id IS NULL
+    //   AND q.id IS NULL
+    //   AND i.primary_bin IS NOT NULL
+
+    // ON CONFLICT DO NOTHING
+    // `,
+    //     [auditId],
+    //   );
+
     await client.query(
       `
   INSERT INTO master_sheet_queue (bin, pcn, grp)
-  SELECT DISTINCT LPAD(TRIM(i.primary_bin), 6, '0'), i.primary_pcn, i.primary_group
+  SELECT DISTINCT 
+    LPAD(TRIM(i.primary_bin), 6, '0'),
+    LOWER(TRIM(i.primary_pcn)),
+    LOWER(TRIM(i.primary_group))
+
   FROM inventory_rows i
+
   LEFT JOIN master_sheet m
     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
-   AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
-   AND (
-         (i.primary_group IS NULL AND m.grp IS NULL)
-         OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
-       )
+   AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(m.pcn)), '')
+   AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(m.grp)), '')
+
+  LEFT JOIN master_sheet_queue q
+    ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
+   AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(q.pcn)), '')
+   AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(q.grp)), '')
+
   WHERE i.audit_id = $1
     AND m.id IS NULL
+    AND q.id IS NULL
     AND i.primary_bin IS NOT NULL
+
   ON CONFLICT DO NOTHING
-  `,
+`,
       [auditId],
     );
     await client.query("COMMIT");
@@ -806,5 +876,200 @@ export const getDrugWholesalerDetail = async (
       wholesaler_end_date: audit?.wholesaler_end_date ?? null,
     },
     rows,
+  };
+};
+
+// export const getCommunityDataGlobal = async (
+//   ndc,
+//   { includeGroups = false, startDate, endDate } = {},
+// ) => {
+//   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
+
+//   const groupFields = includeGroups
+//     ? `
+//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+//       i.primary_pcn AS pcn,
+//       i.primary_group AS grp
+//     `
+//     : `
+//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+//       i.primary_pcn AS pcn
+//     `;
+
+//   const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
+
+//   const dateFilter =
+//     startDate && endDate ? `AND i.date_filled BETWEEN $2 AND $3` : "";
+
+//   const params =
+//     startDate && endDate
+//       ? [normalizedNdc, startDate, endDate]
+//       : [normalizedNdc];
+
+//   const result = await pool.query(
+//     `
+//     SELECT
+//       ${groupFields},
+
+//       COUNT(i.rx_number) AS estimated_rxs,
+
+//       ROUND(AVG(
+//         COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
+//       )::numeric, 2) AS avg_ins_paid,
+
+//       ROUND(
+//         SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
+//         / NULLIF(SUM(i.quantity),0)
+//       ::numeric, 2) AS avg_ins_paid_per_unit
+
+//     FROM inventory_rows i
+
+//     WHERE RIGHT(
+//       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
+//       10
+//     ) = RIGHT($1, 10)
+
+//     ${dateFilter}
+
+//     GROUP BY ${groupBy}
+//     ORDER BY estimated_rxs DESC
+//     `,
+//     params,
+//   );
+
+//   return result.rows;
+// };
+
+export const getCommunityDataGlobal = async (
+  ndc,
+  { includeGroups = false, startDate, endDate, mode = "state", userId } = {},
+) => {
+  const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
+
+  const groupFields = includeGroups
+    ? `
+      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+      i.primary_pcn AS pcn,
+      i.primary_group AS grp
+    `
+    : `
+      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+      i.primary_pcn AS pcn
+    `;
+
+  const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
+
+  let filters = `
+    WHERE RIGHT(
+      LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
+      10
+    ) = RIGHT($1, 10)
+  `;
+
+  let params = [normalizedNdc];
+  let paramIndex = 2;
+
+  // ✅ DATE FILTER
+  if (startDate && endDate) {
+    filters += ` AND i.date_filled BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
+    params.push(startDate, endDate);
+    paramIndex += 2;
+  }
+
+  // ✅ 🔥 USER FILTER (ONLY FOR OPPORTUNITIES)
+  if (mode === "opportunities" && userId) {
+    filters += `
+      AND i.audit_id IN (
+        SELECT id FROM audits WHERE user_id = $${paramIndex}
+      )
+    `;
+    params.push(userId);
+    paramIndex++;
+  }
+
+  const query = `
+    SELECT
+      ${groupFields},
+      COUNT(i.rx_number) AS estimated_rxs,
+      ROUND(AVG(
+        COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
+      )::numeric, 2) AS avg_ins_paid,
+      ROUND(
+        SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
+        / NULLIF(SUM(i.quantity),0)
+      ::numeric, 2) AS avg_ins_paid_per_unit
+    FROM inventory_rows i
+    ${filters}
+    GROUP BY ${groupBy}
+    ORDER BY estimated_rxs DESC
+  `;
+
+  const result = await pool.query(query, params);
+
+  return result.rows;
+};
+
+export const getDrugLookup = async (auditId, ingredient) => {
+  // Helper: the same regex is used in SELECT and GROUP BY. It strips a trailing
+  // "(12345-1234-12)" NDC pattern from drug_name so that
+  //   "ELIQUIS 5MG TAB (00003-0894-21)"
+  //   "ELIQUIS 5MG TAB (00003-0894-70)"
+  //   "ELIQUIS 5MG TAB (00003-3764-74)"
+  // all roll up into a single "ELIQUIS 5MG TAB" parent row.
+  const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
+
+  // Parent rows — grouped by cleaned drug_name (across all NDCs of that strength)
+  const drugsRes = await pool.query(
+    `
+    SELECT
+      ${CLEAN_DRUG}                                              AS drug_name,
+      MAX(brand)                                                 AS brand,
+      COUNT(*)                                                   AS rx_count,
+      SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
+    FROM inventory_rows
+    WHERE audit_id = $1
+      AND UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($2)
+    GROUP BY ${CLEAN_DRUG}
+    ORDER BY rx_count DESC
+    `,
+    [auditId, ingredient],
+  );
+
+  // Child rows — grouped by cleaned drug_name + NDC
+  const ndcRes = await pool.query(
+    `
+    SELECT
+      ${CLEAN_DRUG}                                              AS drug_name,
+      ndc,
+      MAX(brand)                                                 AS brand,
+      COUNT(*)                                                   AS rx_count,
+      SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
+    FROM inventory_rows
+    WHERE audit_id = $1
+      AND UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($2)
+    GROUP BY ${CLEAN_DRUG}, ndc
+    ORDER BY ${CLEAN_DRUG}, rx_count DESC
+    `,
+    [auditId, ingredient],
+  );
+
+  // Nest NDCs under their parent (cleaned) drug_name
+  const byDrug = new Map();
+  for (const d of drugsRes.rows) byDrug.set(d.drug_name, { ...d, ndcs: [] });
+  for (const n of ndcRes.rows) {
+    if (byDrug.has(n.drug_name)) byDrug.get(n.drug_name).ndcs.push(n);
+  }
+
+  return {
+    ingredient: ingredient.toUpperCase(),
+    drugs: Array.from(byDrug.values()),
   };
 };

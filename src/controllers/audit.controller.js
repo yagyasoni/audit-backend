@@ -462,7 +462,7 @@ export const getWholesalerDetail = async (req, res) => {
 
     const rows = result.rows.map((r) => ({
       type: r.wholesaler_name || "MCKESSON",
-      date_ordered: r.invoice_date || "",   // YYYY-MM-DD string
+      date_ordered: r.invoice_date || "", // YYYY-MM-DD string
       quantity: Number(r.quantity ?? 0),
     }));
 
@@ -487,6 +487,65 @@ export const getDrugWholesalerDetail = async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error("getDrugWholesalerDetail error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// export const getCommunityData = async (req, res) => {
+//   try {
+//     const { ndc } = req.params;
+//     const { includeGroups = "false", startDate, endDate } = req.query;
+
+//     const result = await auditService.getCommunityDataGlobal(ndc, {
+//       includeGroups: includeGroups === "true",
+//       startDate,
+//       endDate,
+//     });
+
+//     return res.json(result);
+//   } catch (error) {
+//     console.error("Community data error:", error);
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
+
+export const getCommunityData = async (req, res) => {
+  try {
+    const { ndc } = req.params;
+
+    const {
+      includeGroups = "false",
+      startDate,
+      endDate,
+      mode = "state",
+      userId, // 👈 coming from frontend
+    } = req.query;
+
+    const result = await auditService.getCommunityDataGlobal(ndc, {
+      includeGroups: includeGroups === "true",
+      startDate,
+      endDate,
+      mode,
+      userId, // 👈 pass forward
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Community data error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const getDrugLookup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ingredient } = req.query;
+    if (!ingredient)
+      return res.status(400).json({ error: "ingredient required" });
+    const result = await auditService.getDrugLookup(id, ingredient);
+    return res.json(result);
+  } catch (error) {
+    console.error("getDrugLookup error:", error);
     return res.status(500).json({ message: error.message });
   }
 };
