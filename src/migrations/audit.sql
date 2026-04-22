@@ -172,6 +172,7 @@ CREATE TABLE pharmacy_details (
 CREATE TABLE suppliers (
   id UUID PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

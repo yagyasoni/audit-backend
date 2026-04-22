@@ -30,6 +30,7 @@ router.get("/suppliers", async (req, res) => {
       SELECT 
         s.id,
         s.name,
+        s.email,
         s.created_at,
         sm.mappings
       FROM suppliers s
@@ -122,13 +123,13 @@ router.post("/user-suppliers/:userId", async (req, res) => {
 
 router.post("/suppliers", async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, email } = req.body;
 
     const result = await pool.query(
-      `INSERT INTO suppliers (id, name)
-       VALUES ($1, $2)
+      `INSERT INTO suppliers (id, name, email)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [crypto.randomUUID(), name],
+      [crypto.randomUUID(), name, email || null],
     );
 
     res.json(result.rows[0]);
@@ -289,6 +290,29 @@ router.get("/bin-search", async (req, res) => {
   } catch (error) {
     console.error("BIN search error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/suppliers/:id/email", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    const result = await pool.query(
+      `UPDATE suppliers
+       SET email = $1
+       WHERE id = $2
+       RETURNING *`,
+      [email, id],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Supplier not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
