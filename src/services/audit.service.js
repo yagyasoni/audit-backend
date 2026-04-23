@@ -940,6 +940,76 @@ export const getDrugWholesalerDetail = async (
 //   return result.rows;
 // };
 
+// export const getCommunityDataGlobal = async (
+//   ndc,
+//   { includeGroups = false, startDate, endDate, mode = "state", userId } = {},
+// ) => {
+//   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
+
+//   const groupFields = includeGroups
+//     ? `
+//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+//       i.primary_pcn AS pcn,
+//       i.primary_group AS grp
+//     `
+//     : `
+//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
+//       i.primary_pcn AS pcn
+//     `;
+
+//   const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
+
+//   let filters = `
+//     WHERE RIGHT(
+//       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
+//       10
+//     ) = RIGHT($1, 10)
+//   `;
+
+//   let params = [normalizedNdc];
+//   let paramIndex = 2;
+
+//   // ✅ DATE FILTER
+//   if (startDate && endDate) {
+//     filters += ` AND i.date_filled BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
+//     params.push(startDate, endDate);
+//     paramIndex += 2;
+//   }
+
+//   // ✅ 🔥 USER FILTER (ONLY FOR OPPORTUNITIES)
+//   if (mode === "opportunities" && userId) {
+//     filters += `
+//       AND i.audit_id IN (
+//         SELECT id FROM audits WHERE user_id = $${paramIndex}
+//       )
+//     `;
+//     params.push(userId);
+//     paramIndex++;
+//   }
+
+//   const query = `
+//   SELECT
+//     ${groupFields},
+//     COUNT(i.rx_number) AS estimated_rxs,
+//     ROUND(AVG(
+//       COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
+//     )::numeric, 2) AS avg_ins_paid,
+//     ROUND(
+//       SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
+//       / NULLIF(SUM(i.quantity),0)
+//     ::numeric, 2) AS avg_ins_paid_per_unit
+//     ${includeGroups ? `, ARRAY_AGG(DISTINCT i.rx_number) FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers` : ""}
+//   FROM inventory_rows i
+//   ${filters}
+//   GROUP BY ${groupBy}
+//   ORDER BY estimated_rxs DESC
+// `;
+
+//   const result = await pool.query(query, params);
+
+//   return result.rows;
+// };
+
 export const getCommunityDataGlobal = async (
   ndc,
   { includeGroups = false, startDate, endDate, mode = "state", userId } = {},
@@ -959,6 +1029,10 @@ export const getCommunityDataGlobal = async (
 
   const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
 
+  let params = [normalizedNdc];
+  let paramIndex = 2;
+
+  let joinClause = "";
   let filters = `
     WHERE RIGHT(
       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
@@ -966,8 +1040,13 @@ export const getCommunityDataGlobal = async (
     ) = RIGHT($1, 10)
   `;
 
-  let params = [normalizedNdc];
-  let paramIndex = 2;
+  // ✅ USER FILTER USING JOIN (CLEAN)
+  if (mode === "opportunities" && userId) {
+    joinClause = `INNER JOIN audits a ON a.id = i.audit_id`;
+    filters += ` AND a.user_id = $${paramIndex}`;
+    params.push(userId);
+    paramIndex++;
+  }
 
   // ✅ DATE FILTER
   if (startDate && endDate) {
@@ -976,30 +1055,34 @@ export const getCommunityDataGlobal = async (
     paramIndex += 2;
   }
 
-  // ✅ 🔥 USER FILTER (ONLY FOR OPPORTUNITIES)
-  if (mode === "opportunities" && userId) {
-    filters += `
-      AND i.audit_id IN (
-        SELECT id FROM audits WHERE user_id = $${paramIndex}
-      )
-    `;
-    params.push(userId);
-    paramIndex++;
-  }
-
   const query = `
     SELECT
       ${groupFields},
-      COUNT(i.rx_number) AS estimated_rxs,
+
+      COUNT(*) AS estimated_rxs,  -- ✅ FIXED
+
       ROUND(AVG(
         COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
       )::numeric, 2) AS avg_ins_paid,
+
       ROUND(
         SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
         / NULLIF(SUM(i.quantity),0)
       ::numeric, 2) AS avg_ins_paid_per_unit
+
+      ${
+        includeGroups
+          ? `,
+        ARRAY_AGG(DISTINCT i.rx_number)
+        FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers
+      `
+          : ""
+      }
+
     FROM inventory_rows i
+    ${joinClause}
     ${filters}
+
     GROUP BY ${groupBy}
     ORDER BY estimated_rxs DESC
   `;

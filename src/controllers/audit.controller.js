@@ -60,6 +60,7 @@ export const getFullReport = async (req, res) => {
   SELECT
   i.ndc,
   MAX(REGEXP_REPLACE(i.drug_name, '\s*\(\d{5}-\d{4}-\d{2}\).*$', '')) AS drug_name,
+  MAX(i.brand) AS brand,
   MAX(i.package_size) AS package_size,
   COALESCE(w.total_ordered, 0) AS total_ordered,
   SUM(i.quantity) AS total_billed,
