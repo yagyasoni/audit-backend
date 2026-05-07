@@ -3,6 +3,9 @@ import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
 import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const normalizeNDC = (ndc) => {
   if (!ndc) return null;
@@ -227,7 +230,14 @@ export const updateAuditDates = async (auditId, dates) => {
   return result.rows[0] || null;
 };
 
-export const saveInventoryFile = async (auditId, filename, headerMapping) => {
+export const saveInventoryFile = async (
+  auditId,
+  filename,
+  headerMapping,
+  options = {},
+) => {
+  const { excludeTransferred = false, excludeUnbilled = false } = options;
+
   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
     auditId,
   ]);
@@ -266,6 +276,7 @@ export const saveInventoryFile = async (auditId, filename, headerMapping) => {
   const dbHeaderMapping = toDbHeaderMapping(headerMapping);
   console.log("Normalizing file:", filePath);
   console.log("Header mapping:", headerMapping);
+  console.log("Exclusions:", { excludeTransferred, excludeUnbilled });
 
   let normalizedPath;
   try {
@@ -284,9 +295,25 @@ export const saveInventoryFile = async (auditId, filename, headerMapping) => {
   });
 
   console.log("Total rows parsed:", records.length);
-  if (records.length > 0) {
-    console.log("First row sample:", JSON.stringify(records[0]));
-    await insertInventoryRows(auditId, records);
+
+  // ── ✅ Apply status filters ──
+  const filteredRecords = records.filter((r) => {
+    const status = String(r.status || "")
+      .trim()
+      .toUpperCase();
+    if (excludeTransferred && status === "T") return false;
+    if (excludeUnbilled && status === "U") return false;
+    return true;
+  });
+
+  const droppedCount = records.length - filteredRecords.length;
+  console.log(
+    `After exclusions: ${filteredRecords.length} rows (dropped ${droppedCount})`,
+  );
+
+  if (filteredRecords.length > 0) {
+    console.log("First row sample:", JSON.stringify(filteredRecords[0]));
+    await insertInventoryRows(auditId, filteredRecords);
   }
 
   await refreshAuditStatus(auditId);
@@ -343,63 +370,37 @@ export const insertInventoryRows = async (auditId, rows) => {
       );
     }
 
-    // 🔽 ADD THIS AFTER INSERT LOOP (before COMMIT or after COMMIT)
-    //   await client.query(
-    //     `
-    // INSERT INTO master_sheet_queue (bin, pcn, grp)
-    // SELECT DISTINCT LPAD(TRIM(i.primary_bin), 6, '0'), i.primary_pcn, i.primary_group
-    // FROM inventory_rows i
-    // LEFT JOIN master_sheet m
-    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
-    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
-    //  AND (
-    //        (i.primary_group IS NULL AND m.grp IS NULL)
-    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
-    //      )
-    // WHERE i.audit_id = $1
-    //   AND m.id IS NULL
-    //   AND i.primary_bin IS NOT NULL
-    // ON CONFLICT DO NOTHING
+    //     const queueInsertResult = await client.query(
+    //       `
+    //   INSERT INTO master_sheet_queue (bin, pcn, grp)
+    //   SELECT DISTINCT
+    //     LPAD(TRIM(i.primary_bin), 6, '0'),
+    //     LOWER(TRIM(i.primary_pcn)),
+    //     LOWER(TRIM(i.primary_group))
+
+    //   FROM inventory_rows i
+
+    //   LEFT JOIN master_sheet m
+    //     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
+    //    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(m.pcn)), '')
+    //    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(m.grp)), '')
+
+    //   LEFT JOIN master_sheet_queue q
+    //     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
+    //    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(q.pcn)), '')
+    //    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(q.grp)), '')
+
+    //   WHERE i.audit_id = $1
+    //     AND m.id IS NULL
+    //     AND q.id IS NULL
+    //     AND i.primary_bin IS NOT NULL
+
+    //   ON CONFLICT DO NOTHING
     // `,
-    //     [auditId],
-    //   );
-    //   await client.query(
-    //     `
-    // INSERT INTO master_sheet_queue (bin, pcn, grp)
-    // SELECT DISTINCT
-    //   LPAD(TRIM(i.primary_bin), 6, '0'),
-    //   i.primary_pcn,
-    //   i.primary_group
+    //       [auditId],
+    //     );
 
-    // FROM inventory_rows i
-
-    // LEFT JOIN master_sheet m
-    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
-    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(m.pcn))
-    //  AND (
-    //        (i.primary_group IS NULL AND m.grp IS NULL)
-    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(m.grp))
-    //      )
-
-    // LEFT JOIN master_sheet_queue q
-    //   ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
-    //  AND LOWER(TRIM(i.primary_pcn)) = LOWER(TRIM(q.pcn))
-    //  AND (
-    //        (i.primary_group IS NULL AND q.grp IS NULL)
-    //        OR LOWER(TRIM(i.primary_group)) = LOWER(TRIM(q.grp))
-    //      )
-
-    // WHERE i.audit_id = $1
-    //   AND m.id IS NULL
-    //   AND q.id IS NULL
-    //   AND i.primary_bin IS NOT NULL
-
-    // ON CONFLICT DO NOTHING
-    // `,
-    //     [auditId],
-    //   );
-
-    await client.query(
+    const queueInsertResult = await client.query(
       `
   INSERT INTO master_sheet_queue (bin, pcn, grp)
   SELECT DISTINCT 
@@ -425,9 +426,58 @@ export const insertInventoryRows = async (auditId, rows) => {
     AND i.primary_bin IS NOT NULL
 
   ON CONFLICT DO NOTHING
+
+  RETURNING bin, pcn, grp
 `,
       [auditId],
     );
+
+    const newQueueRows = queueInsertResult.rows;
+
+    if (newQueueRows.length > 0) {
+      // 🔥 SEND ONE EMAIL (summary)
+      resend.emails
+        .send({
+          from: process.env.EMAIL_FROM,
+          to: "drugdroprx@gmail.com",
+          subject: "New Queue Items Detected",
+          html: `
+      <div style="font-family: Arial; padding:20px;">
+        <h2>New Queue Items Added</h2>
+        <p><b>Total New Items:</b> ${newQueueRows.length}</p>
+
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+          <tr>
+            <th>BIN</th>
+            <th>PCN</th>
+            <th>GRP</th>
+          </tr>
+
+          ${newQueueRows
+            .slice(0, 10) // limit preview
+            .map(
+              (r) => `
+              <tr>
+                <td>${r.bin}</td>
+                <td>${r.pcn || "-"}</td>
+                <td>${r.grp || "-"}</td>
+              </tr>
+            `,
+            )
+            .join("")}
+        </table>
+
+        ${
+          newQueueRows.length > 10
+            ? `<p>...and ${newQueueRows.length - 10} more</p>`
+            : ""
+        }
+      </div>
+    `,
+        })
+        .catch(console.error);
+    }
+
     await client.query("COMMIT");
 
     console.log(`✅ All ${rows.length} inventory rows inserted`);
@@ -446,31 +496,57 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
   ]);
   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
 
-  // ✅ Clean old wholesaler data (replace behavior)
-  await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [
-    auditId,
-  ]);
-  const oldWsFiles = await pool.query(
-    `SELECT file_name FROM wholesaler_files WHERE audit_id = $1`,
-    [auditId],
-  );
-  for (const row of oldWsFiles.rows) {
-    const oldPath = path.join(
-      process.cwd(),
-      "uploads/wholesalers",
-      row.file_name,
-    );
-    try {
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    } catch (e) {}
-  }
-  await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [
-    auditId,
-  ]);
+  // ❌ REMOVED: the old blanket delete that wiped EVERY wholesaler file
+  //    for this audit before each upload. That destroyed previously-uploaded
+  //    files whenever the user uploaded a new batch.
+  //
+  //    await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [auditId]);
+  //    await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [auditId]);
+  //
+  // ✅ NEW: per-wholesaler replace. Each wholesaler being uploaded clears
+  //    ONLY its own previous file/rows, leaving every other wholesaler
+  //    on this audit untouched.
 
   const results = [];
 
   for (const fileObj of filesArray) {
+    // ── Per-wholesaler cleanup (replace just this wholesaler) ──
+    const existingFiles = await pool.query(
+      `SELECT id, file_name
+         FROM wholesaler_files
+        WHERE audit_id = $1
+          AND wholesaler_name = $2`,
+      [auditId, fileObj.wholesaler_name],
+    );
+
+    for (const oldFile of existingFiles.rows) {
+      // 1) delete child rows for this specific file
+      await pool.query(
+        `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
+        [oldFile.id],
+      );
+      // 2) delete the file record
+      await pool.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
+        oldFile.id,
+      ]);
+      // 3) remove the physical file from disk
+      const oldPath = path.join(
+        process.cwd(),
+        "uploads/wholesalers",
+        oldFile.file_name,
+      );
+      try {
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch (e) {
+        console.warn(
+          "Failed to delete old wholesaler file:",
+          oldPath,
+          e.message,
+        );
+      }
+    }
+
+    // ── Insert the new file record ──
     const fileInsert = await pool.query(
       `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
        VALUES ($1, $2, $3) RETURNING *`,
@@ -486,6 +562,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
     );
     if (!fs.existsSync(filePath)) {
       console.warn("Wholesaler file not found:", filePath);
+      results.push(fileInsert.rows[0]);
       continue;
     }
 
@@ -506,7 +583,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
         mappingKey: mapping.invoiceDate,
         rawValue: testInvoice,
         cleaned: mapping.invoiceDate
-          ? cleanDateNew(records[0][mapping.invoiceDate])
+          ? cleanDate(records[0][mapping.invoiceDate])
           : null,
         csvHeaders: Object.keys(records[0]),
       });
@@ -525,8 +602,8 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
       continue;
     }
 
-    // ── BULK INSERT wholesaler rows in chunks ──
-    const CHUNK_SIZE = 1000; // 1000 rows × 8 cols = 8,000 params — safe
+    // ── BULK INSERT wholesaler rows in chunks (unchanged) ──
+    const CHUNK_SIZE = 1000;
     const client = await pool.connect();
 
     try {
@@ -585,13 +662,15 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
         await client.query(
           `INSERT INTO wholesaler_rows
-           (audit_id, wholesaler_file_id, ndc, product_name, quantity, unit_cost, total_cost, invoice_date)
+             (audit_id, wholesaler_file_id, ndc, product_name, quantity, unit_cost, total_cost, invoice_date)
            VALUES ${placeholders.join(",")}`,
           values,
         );
 
         console.log(
-          `✅ Wholesaler chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(records.length / CHUNK_SIZE)} inserted for ${fileObj.wholesaler_name}`,
+          `✅ Wholesaler chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(
+            records.length / CHUNK_SIZE,
+          )} inserted for ${fileObj.wholesaler_name}`,
         );
       }
 
@@ -879,160 +958,40 @@ export const getDrugWholesalerDetail = async (
   };
 };
 
-// export const getCommunityDataGlobal = async (
-//   ndc,
-//   { includeGroups = false, startDate, endDate } = {},
-// ) => {
-//   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
-
-//   const groupFields = includeGroups
-//     ? `
-//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-//       i.primary_pcn AS pcn,
-//       i.primary_group AS grp
-//     `
-//     : `
-//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-//       i.primary_pcn AS pcn
-//     `;
-
-//   const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
-
-//   const dateFilter =
-//     startDate && endDate ? `AND i.date_filled BETWEEN $2 AND $3` : "";
-
-//   const params =
-//     startDate && endDate
-//       ? [normalizedNdc, startDate, endDate]
-//       : [normalizedNdc];
-
-//   const result = await pool.query(
-//     `
-//     SELECT
-//       ${groupFields},
-
-//       COUNT(i.rx_number) AS estimated_rxs,
-
-//       ROUND(AVG(
-//         COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
-//       )::numeric, 2) AS avg_ins_paid,
-
-//       ROUND(
-//         SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
-//         / NULLIF(SUM(i.quantity),0)
-//       ::numeric, 2) AS avg_ins_paid_per_unit
-
-//     FROM inventory_rows i
-
-//     WHERE RIGHT(
-//       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
-//       10
-//     ) = RIGHT($1, 10)
-
-//     ${dateFilter}
-
-//     GROUP BY ${groupBy}
-//     ORDER BY estimated_rxs DESC
-//     `,
-//     params,
-//   );
-
-//   return result.rows;
-// };
-
-// export const getCommunityDataGlobal = async (
-//   ndc,
-//   { includeGroups = false, startDate, endDate, mode = "state", userId } = {},
-// ) => {
-//   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
-
-//   const groupFields = includeGroups
-//     ? `
-//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-//       i.primary_pcn AS pcn,
-//       i.primary_group AS grp
-//     `
-//     : `
-//       LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-//       i.primary_pcn AS pcn
-//     `;
-
-//   const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
-
-//   let filters = `
-//     WHERE RIGHT(
-//       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
-//       10
-//     ) = RIGHT($1, 10)
-//   `;
-
-//   let params = [normalizedNdc];
-//   let paramIndex = 2;
-
-//   // ✅ DATE FILTER
-//   if (startDate && endDate) {
-//     filters += ` AND i.date_filled BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
-//     params.push(startDate, endDate);
-//     paramIndex += 2;
-//   }
-
-//   // ✅ 🔥 USER FILTER (ONLY FOR OPPORTUNITIES)
-//   if (mode === "opportunities" && userId) {
-//     filters += `
-//       AND i.audit_id IN (
-//         SELECT id FROM audits WHERE user_id = $${paramIndex}
-//       )
-//     `;
-//     params.push(userId);
-//     paramIndex++;
-//   }
-
-//   const query = `
-//   SELECT
-//     ${groupFields},
-//     COUNT(i.rx_number) AS estimated_rxs,
-//     ROUND(AVG(
-//       COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
-//     )::numeric, 2) AS avg_ins_paid,
-//     ROUND(
-//       SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
-//       / NULLIF(SUM(i.quantity),0)
-//     ::numeric, 2) AS avg_ins_paid_per_unit
-//     ${includeGroups ? `, ARRAY_AGG(DISTINCT i.rx_number) FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers` : ""}
-//   FROM inventory_rows i
-//   ${filters}
-//   GROUP BY ${groupBy}
-//   ORDER BY estimated_rxs DESC
-// `;
-
-//   const result = await pool.query(query, params);
-
-//   return result.rows;
-// };
-
 export const getCommunityDataGlobal = async (
   ndc,
-  { includeGroups = false, startDate, endDate, mode = "state", userId } = {},
+  {
+    includeGroups = false,
+    mode = "state",
+    userId,
+    bin,
+    pcn,
+    grp,
+    range, // "last_90_days" | "this_year" | "all_time" | undefined
+  } = {},
 ) => {
   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
 
   const groupFields = includeGroups
     ? `
-      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-      i.primary_pcn AS pcn,
-      i.primary_group AS grp
+      LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0') AS bin,
+      TRIM(i.primary_pcn) AS pcn,
+      COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP') AS grp
     `
     : `
-      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
-      i.primary_pcn AS pcn
+      LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0') AS bin,
+      TRIM(i.primary_pcn) AS pcn
     `;
 
-  const groupBy = includeGroups ? `bin, pcn, grp` : `bin, pcn`;
+  const groupBy = includeGroups
+    ? `LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0'), TRIM(i.primary_pcn), COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP')`
+    : `LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0'), TRIM(i.primary_pcn)`;
 
   let params = [normalizedNdc];
   let paramIndex = 2;
+  let joins = "";
 
-  let joinClause = "";
+  // ✅ NDC filter always applied
   let filters = `
     WHERE RIGHT(
       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
@@ -1040,47 +999,73 @@ export const getCommunityDataGlobal = async (
     ) = RIGHT($1, 10)
   `;
 
-  // ✅ USER FILTER USING JOIN (CLEAN)
-  if (mode === "opportunities" && userId) {
-    joinClause = `INNER JOIN audits a ON a.id = i.audit_id`;
-    filters += ` AND a.user_id = $${paramIndex}`;
-    params.push(userId);
+  // ✅ Range / timeline filter
+  if (range === "last_90_days") {
+    filters += ` AND i.date_filled >= CURRENT_DATE - INTERVAL '90 days'`;
+  } else if (range === "this_year") {
+    filters += ` AND EXTRACT(YEAR FROM i.date_filled) = EXTRACT(YEAR FROM CURRENT_DATE)`;
+  }
+
+  // ✅ Optional bin filter (from outside or from See Group click)
+  if (bin) {
+    filters += `
+    AND LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0')
+    = LTRIM($${paramIndex}, '0')
+  `;
+    params.push(bin.toString().trim());
     paramIndex++;
   }
 
-  // ✅ DATE FILTER
-  if (startDate && endDate) {
-    filters += ` AND i.date_filled BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
-    params.push(startDate, endDate);
-    paramIndex += 2;
+  // ✅ Optional pcn filter
+  if (pcn) {
+    filters += ` AND TRIM(i.primary_pcn) = $${paramIndex}`;
+    params.push(pcn.toString().trim());
+    paramIndex++;
+  }
+
+  // ✅ Optional group filter
+  if (grp !== undefined) {
+    const normalizedGrp = grp && grp.trim() !== "" ? grp.trim() : "NO_GROUP";
+
+    filters += ` AND COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP') = $${paramIndex}`;
+    params.push(normalizedGrp);
+    paramIndex++;
+  }
+
+  // ✅ Always join audits for user_id access
+  joins = ` INNER JOIN audits a ON a.id = i.audit_id `;
+
+  // ✅ User filter only in opportunities mode
+  if (mode === "opportunities" && userId) {
+    filters += ` AND a.user_id = $${paramIndex}`;
+    params.push(userId);
+    paramIndex++;
   }
 
   const query = `
     SELECT
       ${groupFields},
 
-      COUNT(*) AS estimated_rxs,  -- ✅ FIXED
+      COUNT(DISTINCT (a.user_id,i.rx_number,i.date_filled)) AS estimated_rxs,
 
       ROUND(AVG(
-        COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0)
+        COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)
       )::numeric, 2) AS avg_ins_paid,
 
-      ROUND(
-        SUM(COALESCE(i.primary_paid,0) + COALESCE(i.secondary_paid,0))
-        / NULLIF(SUM(i.quantity),0)
-      ::numeric, 2) AS avg_ins_paid_per_unit
+      ROUND((
+        SUM(COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0))
+        / NULLIF(SUM(i.quantity), 0)
+      )::numeric, 2) AS avg_ins_paid_per_unit
 
       ${
         includeGroups
-          ? `,
-        ARRAY_AGG(DISTINCT i.rx_number)
-        FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers
-      `
+          ? `, ARRAY_AGG(DISTINCT i.rx_number)
+               FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers`
           : ""
       }
 
     FROM inventory_rows i
-    ${joinClause}
+    ${joins}
     ${filters}
 
     GROUP BY ${groupBy}
@@ -1088,7 +1073,6 @@ export const getCommunityDataGlobal = async (
   `;
 
   const result = await pool.query(query, params);
-
   return result.rows;
 };
 
@@ -1155,4 +1139,251 @@ export const getDrugLookup = async (auditId, ingredient) => {
     ingredient: ingredient.toUpperCase(),
     drugs: Array.from(byDrug.values()),
   };
+};
+
+export const searchDrugNames = async (query, limit = 10) => {
+  const CLEAN_DRUG = `
+  TRIM(
+    REGEXP_REPLACE(
+      REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''),
+      '[,|].*$',
+      ''
+    )
+  )
+  `;
+
+  const result = await pool.query(
+    `
+    SELECT 
+      ${CLEAN_DRUG} AS drug_name,
+      COUNT(*) AS rx_count
+    FROM inventory_rows
+    WHERE drug_name ILIKE $1
+      AND drug_name IS NOT NULL
+      AND TRIM(drug_name) != ''
+      AND drug_name NOT LIKE '%,%'
+      AND drug_name NOT LIKE '%|%'
+      AND LENGTH(drug_name) < 120
+    GROUP BY ${CLEAN_DRUG}
+    ORDER BY rx_count DESC
+    LIMIT $2
+    `,
+    [`%${query}%`, limit],
+  );
+
+  return result.rows.map((r) => ({
+    name: r.drug_name,
+    rx_count: Number(r.rx_count),
+  }));
+};
+
+// ── GLOBAL DRUG LOOKUP (across ALL audits, with optional BIN/PCN/GRP filters) ──
+
+export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
+  const { bin, pcn, grp } = filters;
+  const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
+
+  // Build WHERE clause dynamically
+  const conditions = [`UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($1)`];
+  const params = [ingredient];
+  let pIdx = 2;
+
+  if (bin && String(bin).trim()) {
+    // Strip leading zeros on both sides so user typing "4336" matches DB "004336"
+    conditions.push(
+      `LTRIM(UPPER(TRIM(COALESCE(primary_bin,''))),'0') = LTRIM(UPPER(TRIM($${pIdx})),'0')`,
+    );
+    params.push(String(bin).trim());
+    pIdx++;
+  }
+  if (pcn && String(pcn).trim()) {
+    conditions.push(
+      `UPPER(TRIM(COALESCE(primary_pcn,''))) = UPPER(TRIM($${pIdx}))`,
+    );
+    params.push(String(pcn).trim());
+    pIdx++;
+  }
+  if (grp && String(grp).trim()) {
+    conditions.push(
+      `UPPER(COALESCE(NULLIF(TRIM(primary_group), ''), 'NO_GROUP')) = UPPER(TRIM($${pIdx}))`,
+    );
+    params.push(String(grp).trim());
+    pIdx++;
+  }
+
+  const whereClause = conditions.join(" AND ");
+
+  // Parent rows — grouped by cleaned drug_name
+  const drugsRes = await pool.query(
+    `
+    SELECT
+      ${CLEAN_DRUG}                                              AS drug_name,
+      MAX(brand)                                                 AS brand,
+      COUNT(DISTINCT (a.user_id,rx_number,date_filled))                                AS rx_count,
+      SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
+    FROM inventory_rows
+INNER JOIN audits a ON a.id = inventory_rows.audit_id
+WHERE ${whereClause}
+    GROUP BY ${CLEAN_DRUG}
+    ORDER BY rx_count DESC
+    `,
+    params,
+  );
+
+  // Child rows — grouped by cleaned drug_name + NDC
+  const ndcRes = await pool.query(
+    `
+    SELECT
+      ${CLEAN_DRUG}                                              AS drug_name,
+      RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10) AS ndc,
+      MAX(brand)                                                 AS brand,
+      COUNT(DISTINCT (a.user_id,rx_number,date_filled))                                                   AS rx_count,
+      SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
+      SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
+        / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
+    FROM inventory_rows
+INNER JOIN audits a ON a.id = inventory_rows.audit_id
+WHERE ${whereClause}
+    GROUP BY ${CLEAN_DRUG}, RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
+    ORDER BY ${CLEAN_DRUG}, rx_count DESC
+    `,
+    params,
+  );
+
+  const byDrug = new Map();
+  for (const d of drugsRes.rows) byDrug.set(d.drug_name, { ...d, ndcs: [] });
+  for (const n of ndcRes.rows) {
+    if (byDrug.has(n.drug_name)) byDrug.get(n.drug_name).ndcs.push(n);
+  }
+
+  return {
+    ingredient: ingredient.toUpperCase(),
+    filters: { bin: bin || null, pcn: pcn || null, grp: grp || null },
+    drugs: Array.from(byDrug.values()),
+  };
+};
+
+// ── Log a submitted search (fire-and-forget, with quality filters) ──
+
+export const logDrugSearch = async (query) => {
+  try {
+    const raw = String(query ?? "").trim();
+    if (!raw) return;
+
+    // Only keep the FIRST word (the ingredient) — drops "ELIQUIS 5MG TAB" → "ELIQUIS"
+    const firstWord = raw.split(/\s+/)[0];
+
+    // Reject garbage:
+    //  - too short (< 3 chars)
+    //  - contains digits or punctuation other than hyphen (rejects "E;i", "5mg")
+    //  - starts with digit
+    if (firstWord.length < 5) return;
+    if (!/^[A-Za-z][A-Za-z-]+$/.test(firstWord)) return;
+
+    // Normalize to uppercase so "Eliquis" and "eliquis" merge
+    const normalized = firstWord.toUpperCase();
+
+    await pool.query(`INSERT INTO drug_search_log (query) VALUES ($1)`, [
+      normalized,
+    ]);
+  } catch (err) {
+    console.warn("logDrugSearch failed:", err.message);
+  }
+};
+
+// ── Landing page stats + trending (one call) ──
+// ── Landing page stats + trending (one call) ──
+export const getDrugLookupLanding = async () => {
+  const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
+
+  // Run everything in parallel
+  const [statsRes, trendingRes] = await Promise.all([
+    pool.query(`
+  SELECT
+    (SELECT COUNT(DISTINCT ${CLEAN_DRUG}) FROM inventory_rows WHERE drug_name IS NOT NULL AND TRIM(drug_name) != '') AS drugs_indexed,
+    (SELECT COUNT(DISTINCT ndc) FROM inventory_rows WHERE ndc IS NOT NULL AND TRIM(ndc) != '') AS ndc_codes,
+    (SELECT COUNT(*) FROM inventory_rows) AS total_prescriptions,
+    (SELECT COUNT(DISTINCT rx_number) FROM inventory_rows WHERE rx_number IS NOT NULL AND TRIM(rx_number) != '') AS unique_rx
+`),
+    pool.query(`
+      SELECT query, COUNT(*) AS hits
+      FROM drug_search_log
+      WHERE searched_at >= NOW() - INTERVAL '30 days'
+      GROUP BY LOWER(query), query
+      ORDER BY hits DESC
+      LIMIT 10
+    `),
+  ]);
+
+  const stats = statsRes.rows[0] || {};
+
+  return {
+    stats: {
+      drugs_indexed: Number(stats.drugs_indexed ?? 0),
+      ndc_codes: Number(stats.ndc_codes ?? 0),
+      total_prescriptions: Number(stats.total_prescriptions ?? 0),
+      unique_rx: Number(stats.unique_rx ?? 0),
+    },
+    trending: trendingRes.rows.map((r) => ({
+      query: r.query,
+      hits: Number(r.hits),
+    })),
+  };
+};
+
+export const searchNdcSuggestions = async (query, limit = 8) => {
+  const q = String(query ?? "").trim();
+  if (q.length < 2) return [];
+
+  const numericOnly = q.replace(/\D/g, "");
+  const ndcPattern = numericOnly.length >= 3 ? `%${numericOnly}%` : null;
+
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        ndc,
+        MAX(drug_name)    AS drug_name,
+        MAX(brand)        AS brand,
+        MAX(package_size) AS package_size,
+        COUNT(*)          AS rx_count
+      FROM inventory_rows
+      WHERE ndc IS NOT NULL
+        AND TRIM(ndc) <> ''
+        AND (
+          drug_name ILIKE $1
+          OR ($2::text IS NOT NULL AND REGEXP_REPLACE(ndc, '[^0-9]', '', 'g') ILIKE $2)
+        )
+      GROUP BY ndc
+      ORDER BY rx_count DESC
+      LIMIT $3
+      `,
+      [`%${q}%`, ndcPattern, limit],
+    );
+
+    return result.rows.map((r) => ({
+      ndc: r.ndc,
+      drug_name: r.drug_name,
+      brand: r.brand || null,
+      package_size: r.package_size || null,
+      rx_count: Number(r.rx_count),
+    }));
+  } catch (err) {
+    // Log only safe scalar fields — never `err` itself (pg attaches the socket)
+    const msg = String(err?.message || "").slice(0, 300);
+    const code = err?.code || "";
+    console.error(
+      "searchNdcSuggestions SQL error | code:",
+      code,
+      "| msg:",
+      msg,
+    );
+    throw new Error(msg || "NDC suggestion query failed");
+  }
 };

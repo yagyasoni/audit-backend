@@ -4,6 +4,59 @@
 
 import express from "express";
 import { pool } from "../config/db.js"; // same db.js your other routes use
+import { Resend } from "resend";
+
+// src/templates/emailTemplates.js
+
+const feedbackEmailTemplate = (feedback) => `
+<div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+    
+    <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+      New Feedback Received
+    </div>
+
+    <div style="padding:24px; color:#1f2937;">
+      <p><b>Subject:</b> ${feedback.subject}</p>
+      <p><b>Message:</b></p>
+      <p style="margin-top:8px;">${feedback.message}</p>
+
+      <p style="margin-top:20px; font-size:12px; color:#64748b;">
+        Submitted at: ${new Date(feedback.created_at).toLocaleString()}
+      </p>
+    </div>
+
+    <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+      © 2026 AuditProRx
+    </div>
+  </div>
+</div>
+`;
+
+const reminderTemplate = ({ feedbackCount, queueCount }) => `
+<div style="font-family: Arial; background:#f4f6f8; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:#fff; border-radius:8px;">
+    
+    <div style="background:#dc2626; color:#fff; padding:16px; text-align:center;">
+      Pending Items Reminder
+    </div>
+
+    <div style="padding:24px;">
+      <p>You still have pending items:</p>
+
+      <ul>
+        <li><b>Feedbacks:</b> ${feedbackCount}</li>
+        <li><b>Queue Items:</b> ${queueCount}</li>
+      </ul>
+
+      <p style="margin-top:20px;">Please review them.</p>
+    </div>
+
+  </div>
+</div>
+`;
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
 
@@ -11,15 +64,19 @@ const router = express.Router();
 
 router.delete("/users/:id", async (req, res) => {
   const { id } = req.params;
+  const client = await pool.connect();
 
   try {
-    // optional: check if user exists
-    const userCheck = await pool.query(
+    await client.query("BEGIN");
+
+    // 1️⃣ Check user
+    const userCheck = await client.query(
       "SELECT id, email FROM users WHERE id = $1",
       [id],
     );
 
     if (userCheck.rowCount === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({
         success: false,
         message: "User not found",
@@ -28,25 +85,133 @@ router.delete("/users/:id", async (req, res) => {
 
     const email = userCheck.rows[0].email;
 
-    // 🔥 delete user (CASCADE handles rest)
-    await pool.query("DELETE FROM users WHERE id = $1", [id]);
+    // 2️⃣ Preserve FULL RX snapshot (latest per unique RX)
+    await client.query(
+      `
+      INSERT INTO preserved_inventory_rx (
+        original_user_id,
+        rx_number,
+        date_filled,
+        ndc,
+        status,
+        drug_name,
+        quantity,
+        package_size,
+        primary_bin,
+        primary_paid,
+        secondary_bin,
+        secondary_paid,
+        primary_pcn,
+        primary_group,
+        brand,
+        original_audit_id
+      )
+      SELECT DISTINCT ON (a.user_id, ir.rx_number, ir.date_filled)
+          a.user_id,
+          ir.rx_number,
+          ir.date_filled,
+          ir.ndc,
+          ir.status,
+          ir.drug_name,
+          ir.quantity,
+          ir.package_size,
+          ir.primary_bin,
+          ir.primary_paid,
+          ir.secondary_bin,
+          ir.secondary_paid,
+          ir.primary_pcn,
+          ir.primary_group,
+          ir.brand,
+          ir.audit_id
+      FROM inventory_rows ir
+      JOIN audits a ON ir.audit_id = a.id
+      WHERE a.user_id = $1
+      AND ir.rx_number IS NOT NULL
+      AND ir.date_filled IS NOT NULL
+      ORDER BY a.user_id, ir.rx_number, ir.date_filled, ir.id DESC
+      ON CONFLICT (original_user_id, rx_number, date_filled) DO UPDATE
+      SET
+          ndc = EXCLUDED.ndc,
+          status = EXCLUDED.status,
+          drug_name = EXCLUDED.drug_name,
+          quantity = EXCLUDED.quantity,
+          package_size = EXCLUDED.package_size,
+          primary_bin = EXCLUDED.primary_bin,
+          primary_paid = EXCLUDED.primary_paid,
+          secondary_bin = EXCLUDED.secondary_bin,
+          secondary_paid = EXCLUDED.secondary_paid,
+          primary_pcn = EXCLUDED.primary_pcn,
+          primary_group = EXCLUDED.primary_group,
+          brand = EXCLUDED.brand,
+          original_audit_id = EXCLUDED.original_audit_id;
+      `,
+      [id],
+    );
 
-    // ⚠️ manual cleanup (email-based tables)
-    await pool.query("DELETE FROM email_otps WHERE email = $1", [email]);
-    await pool.query("DELETE FROM password_resets WHERE email = $1", [email]);
+    // 3️⃣ Delete user (CASCADE)
+    await client.query("DELETE FROM users WHERE id = $1", [id]);
+
+    // 4️⃣ Manual cleanup
+    await client.query("DELETE FROM email_otps WHERE email = $1", [email]);
+    await client.query("DELETE FROM password_resets WHERE email = $1", [email]);
+
+    await client.query("COMMIT");
 
     return res.json({
       success: true,
-      message: "User and all related data deleted successfully",
+      message: "User deleted. Full RX data preserved.",
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("Delete user error:", err);
+
     return res.status(500).json({
       success: false,
       message: "Failed to delete user",
     });
+  } finally {
+    client.release();
   }
 });
+
+// router.delete("/users/:id", async (req, res) => {
+//   const { id } = req.params;
+
+//   try {
+//     // optional: check if user exists
+//     const userCheck = await pool.query(
+//       "SELECT id, email FROM users WHERE id = $1",
+//       [id],
+//     );
+
+//     if (userCheck.rowCount === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found",
+//       });
+//     }
+
+//     const email = userCheck.rows[0].email;
+
+//     // 🔥 delete user (CASCADE handles rest)
+//     await pool.query("DELETE FROM users WHERE id = $1", [id]);
+
+//     // ⚠️ manual cleanup (email-based tables)
+//     await pool.query("DELETE FROM email_otps WHERE email = $1", [email]);
+//     await pool.query("DELETE FROM password_resets WHERE email = $1", [email]);
+
+//     return res.json({
+//       success: true,
+//       message: "User and all related data deleted successfully",
+//     });
+//   } catch (err) {
+//     console.error("Delete user error:", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to delete user",
+//     });
+//   }
+// });
 
 // ─────────────────────────────────────────────────────────────
 // GET /admin/excel
@@ -58,17 +223,38 @@ router.delete("/users/:id", async (req, res) => {
 router.get("/excel", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, bin, pcn, grp, pbm_name, payer_type
+      `SELECT id, bin, pcn, grp, pbm_name, payer_type, updated_at
        FROM master_sheet
        ORDER BY id ASC`,
     );
 
-    const headers = ["id", "bin", "pcn", "grp", "pbm_name", "payer_type"];
+    const headers = [
+      "id",
+      "bin",
+      "pcn",
+      "grp",
+      "pbm_name",
+      "payer_type",
+      "updated_at",
+    ];
+
+    // const rows = result.rows.map((row) =>
+    //   headers.map((col) =>
+    //     row[col] !== null && row[col] !== undefined ? String(row[col]) : "",
+    //   ),
+    // );
 
     const rows = result.rows.map((row) =>
-      headers.map((col) =>
-        row[col] !== null && row[col] !== undefined ? String(row[col]) : "",
-      ),
+      headers.map((col) => {
+        const value = row[col];
+
+        // ✅ KEEP timestamps RAW
+        if (col === "updated_at") {
+          return value ? value.toISOString() : "";
+        }
+
+        return value !== null && value !== undefined ? String(value) : "";
+      }),
     );
 
     return res.status(200).json({
@@ -430,6 +616,18 @@ router.post("/feedbacks", async (req, res) => {
        RETURNING *`,
       [user_id || null, subject, message],
     );
+
+    const feedback = result.rows[0];
+
+    // 🔥 EMAIL HERE
+    resend.emails
+      .send({
+        from: process.env.EMAIL_FROM,
+        to: "drugdroprx@gmail.com",
+        subject: "New Feedback Received",
+        html: feedbackEmailTemplate(feedback),
+      })
+      .catch(console.error);
 
     res.status(200).json({
       message: "Feedback submitted successfully",

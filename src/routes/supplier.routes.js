@@ -1,8 +1,10 @@
 import express from "express";
 import { pool } from "../config/db.js";
 import crypto from "crypto";
+import { Resend } from "resend";
 
 const router = express.Router();
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const STANDARD_FIELDS = [
   "ndc_number",
@@ -107,6 +109,61 @@ router.post("/user-suppliers/:userId", async (req, res) => {
     }
 
     await client.query("COMMIT");
+
+    //     const emailResult = await pool.query(
+    //       `SELECT email FROM users WHERE id = $1`,
+    //       [userId],
+    //     );
+
+    //     const email = emailResult.rows[0]?.email;
+
+    //     if (email) {
+    //       try {
+    //         await resend.emails.send({
+    //           from: process.env.EMAIL_FROM,
+    //           to: email,
+    //           subject: "Account Created Successfully",
+    //           html: `
+    // <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+    //   <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+
+    //     <!-- Header -->
+    //     <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+    //       Account Created Successfully
+    //     </div>
+
+    //     <!-- Body -->
+    //     <div style="padding:24px; color:#1f2937;">
+    //       <p style="margin-bottom:16px;">Hello,</p>
+    //       <p style="margin-bottom:16px;">
+    //         Your account has been created successfully for the AuditProRx platform.
+    //       </p>
+
+    //       <div style="text-align:center; margin:24px 0;">
+    //         <span style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#0f172a;">
+    //           A U D I T P R O R X
+    //         </span>
+    //       </div>
+
+    //       <p style="margin-bottom:16px;">
+    //        If you did not create this account, please ignore this email or contact support.
+    //       </p>
+    //     </div>
+
+    //     <!-- Footer -->
+    //     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+    //       © 2026 AuditProRx. All rights reserved.<br/>
+    //       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+    //     </div>
+
+    //   </div>
+    // </div>
+    // `,
+    //         });
+    //       } catch (err) {
+    //         console.error("Email failed:", err);
+    //       }
+    //     }
 
     res.status(200).json({
       message: "Suppliers saved successfully",

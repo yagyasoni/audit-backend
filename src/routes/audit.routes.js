@@ -18,6 +18,10 @@ import {
   getWholesalerDetail,
   getCommunityData,
   getDrugLookup,
+  searchDrugNames,
+  getDrugLookupGlobal,
+  getDrugLookupLanding,
+  searchNdcSuggestions,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -25,6 +29,12 @@ const router = express.Router();
 // ============================
 // CREATE & UPDATE
 // ============================
+
+router.get("/drug-search", searchDrugNames);
+router.get("/drug-lookup-global", getDrugLookupGlobal); // ← ADD THIS LINE
+router.get("/drug-lookup-landing", getDrugLookupLanding);
+// In audit.routes.js, add this line with the other audit routes:
+router.get("/ndc-suggestions", searchNdcSuggestions);
 
 router.post("/", createAudit);
 router.patch("/:id/dates", updateAuditDates);

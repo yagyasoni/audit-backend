@@ -27,53 +27,6 @@ router.post(
 
     try {
       switch (event.type) {
-        // case "checkout.session.completed": {
-        //   const session = event.data.object;
-
-        //   console.log(
-        //     "🔍 SESSION DUMP:",
-        //     JSON.stringify(
-        //       {
-        //         id: session.id,
-        //         customer: session.customer,
-        //         subscription: session.subscription,
-        //         status: session.status,
-        //       },
-        //       null,
-        //       2,
-        //     ),
-        //   );
-
-        //   if (!session.subscription) {
-        //     console.log(
-        //       "⚠️ No subscription on session yet — trial race. subscription.created will handle it.",
-        //     );
-        //     break;
-        //   }
-
-        //   // Fetch fresh subscription
-        //   const freshSub = await stripe.subscriptions.retrieve(
-        //     session.subscription,
-        //   );
-        //   console.log(
-        //     "🔍 FRESH SUB FROM checkout.session.completed:",
-        //     JSON.stringify(
-        //       {
-        //         id: freshSub.id,
-        //         status: freshSub.status,
-        //         trial_end: freshSub.trial_end,
-        //         current_period_end: freshSub.current_period_end,
-        //         customer: freshSub.customer,
-        //       },
-        //       null,
-        //       2,
-        //     ),
-        //   );
-
-        //   await upsertSubscription(freshSub, "customer");
-        //   break;
-        // }
-
         case "checkout.session.completed": {
           const session = event.data.object;
           const userId = session.metadata?.userId; // This is the link to your manual record
@@ -84,14 +37,32 @@ router.post(
             );
 
             // 🔥 THE FIX: Use userId to link Stripe data to your existing manual record
-            await pool.query(
+            //       await pool.query(
+            //         `UPDATE subscriptions
+            //  SET stripe_customer_id = $1,
+            //      stripe_subscription_id = $2,
+            //      status = $3
+            //  WHERE user_id = $4`,
+            //         [session.customer, freshSub.id, freshSub.status, userId],
+            //       );
+
+            //       await upsertSubscription(freshSub, "subscription");
+            const updateResult = await pool.query(
               `UPDATE subscriptions 
-       SET stripe_customer_id = $1, 
-           stripe_subscription_id = $2, 
-           status = $3 
-       WHERE user_id = $4`,
+   SET stripe_customer_id = $1, 
+       stripe_subscription_id = $2, 
+       status = $3 
+   WHERE user_id = $4`,
               [session.customer, freshSub.id, freshSub.status, userId],
             );
+
+            if (updateResult.rowCount === 0) {
+              console.error(
+                "❌ checkout.session.completed: No DB row found for userId:",
+                userId,
+              );
+              break; // Stop — don't proceed to upsertSubscription either
+            }
 
             await upsertSubscription(freshSub, "subscription");
           } else {

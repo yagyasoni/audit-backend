@@ -48,7 +48,6 @@ export const getFullReport = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // DEBUG - check if rows exist at all
     const countCheck = await pool.query(
       `SELECT COUNT(*) FROM inventory_rows WHERE audit_id = $1`,
       [id],
@@ -57,65 +56,163 @@ export const getFullReport = async (req, res) => {
 
     const result = await pool.query(
       `
-  SELECT
-  i.ndc,
-  MAX(REGEXP_REPLACE(i.drug_name, '\s*\(\d{5}-\d{4}-\d{2}\).*$', '')) AS drug_name,
-  MAX(i.brand) AS brand,
-  MAX(i.package_size) AS package_size,
-  COALESCE(w.total_ordered, 0) AS total_ordered,
-  SUM(i.quantity) AS total_billed,
-  SUM(COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)) AS total_amount,
-  COALESCE(w.total_cost, 0) AS cost,
-  COALESCE(w.total_ordered, 0) - SUM(i.quantity) AS total_shortage,
-
-COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'horizon' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS horizon,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'express scripts' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS express,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'caremark' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('optum','optumrx') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS optumrx,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) = 'humana' AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS humana,
-COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'medicaid' THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
-COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'medicare' THEN i.quantity ELSE 0 END), 0) AS medicare,
-COALESCE(SUM(CASE WHEN (LOWER(pbm.pbm_name) ILIKE '%southern scripts%' OR LOWER(pbm.pbm_name) ILIKE '%liviniti%') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS ssc,
-  COALESCE(SUM(CASE WHEN LOWER(pbm.pbm_name) IN ('medimpact') AND LOWER(pbm.payer_type) = 'commercial' THEN i.quantity ELSE 0 END), 0) AS pdmi,
-COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) IN ('coupon','copay card') THEN i.quantity ELSE 0 END), 0) AS coupon,
-COALESCE(SUM(CASE WHEN LOWER(pbm.payer_type) = 'government/military' THEN i.quantity ELSE 0 END), 0) AS gov_military
-
-FROM inventory_rows i
-
--- ✅ SINGLE lateral with 3-level COALESCE fallback (fixes the 2x duplication)
-LEFT JOIN LATERAL (
-  SELECT ms.pbm_name, ms.payer_type
-  FROM (
-    SELECT pbm_name, payer_type, 1 AS priority FROM master_sheet m
-     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
-       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-       AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
-    UNION ALL
-    SELECT pbm_name, payer_type, 2 FROM master_sheet m
-     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
-       AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-    UNION ALL
-    SELECT pbm_name, payer_type, 3 FROM master_sheet m
-     WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
-    ORDER BY priority LIMIT 1
-  ) ms
-) pbm ON true
-
-LEFT JOIN (
-  SELECT
-    LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc_normalized,
-    SUM(quantity) AS total_ordered,
-    SUM(COALESCE(total_cost, 0)) AS total_cost
-  FROM wholesaler_rows
-  WHERE audit_id = $1
-  GROUP BY LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0')
-) w ON LPAD(REGEXP_REPLACE(w.ndc_normalized, '[^0-9]', '', 'g'), 11, '0')
-     = LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
-
-WHERE i.audit_id = $1
-GROUP BY i.ndc, w.total_ordered, w.total_cost, w.ndc_normalized
-ORDER BY SUM(i.quantity) DESC
-  `,
+      WITH a AS (
+        SELECT
+          inventory_start_date,
+          inventory_end_date,
+          wholesaler_start_date,
+          wholesaler_end_date
+        FROM audits
+        WHERE id = $1
+      ),
+      ws AS (
+        SELECT
+          LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc_normalized,
+          SUM(wr.quantity) AS total_ordered,
+          SUM(COALESCE(wr.total_cost, 0)) AS total_cost
+        FROM wholesaler_rows wr
+        CROSS JOIN a
+        WHERE wr.audit_id = $1
+          AND (
+            wr.invoice_date IS NULL
+            OR (a.wholesaler_start_date IS NULL AND a.wholesaler_end_date IS NULL)
+            OR wr.invoice_date BETWEEN a.wholesaler_start_date AND a.wholesaler_end_date
+          )
+        GROUP BY LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0')
+      )
+      SELECT
+        i.ndc,
+        MAX(REGEXP_REPLACE(i.drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\).*$', '')) AS drug_name,
+        MAX(i.brand) AS brand,
+        MAX(i.package_size) AS package_size,
+        COALESCE(MAX(ws.total_ordered), 0) AS total_ordered,
+ 
+        SUM(CASE WHEN i.date_filled IS NULL
+                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+                 THEN i.quantity ELSE 0 END) AS total_billed,
+ 
+        SUM(CASE WHEN i.date_filled IS NULL
+                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+                 THEN COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)
+                 ELSE 0 END) AS total_amount,
+ 
+        COALESCE(MAX(ws.total_cost), 0) AS cost,
+ 
+        COALESCE(MAX(ws.total_ordered), 0) - SUM(
+          CASE WHEN i.date_filled IS NULL
+                OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+               THEN i.quantity ELSE 0 END
+        ) AS total_shortage,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'horizon'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS horizon,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'express scripts'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS express,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'caremark'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) IN ('optum','optumrx')
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS optumrx,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'humana'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS humana,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.payer_type) = 'medicaid'
+                          THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.payer_type) = 'medicare'
+                          THEN i.quantity ELSE 0 END), 0) AS medicare,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND (LOWER(pbm.pbm_name) ILIKE '%southern scripts%'
+                              OR LOWER(pbm.pbm_name) ILIKE '%liviniti%')
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS ssc,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) IN ('medimpact')
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS pdmi,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.payer_type) IN ('coupon','copay card')
+                          THEN i.quantity ELSE 0 END), 0) AS coupon,
+ 
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.payer_type) = 'government/military'
+                          THEN i.quantity ELSE 0 END), 0) AS gov_military
+ 
+      FROM inventory_rows i
+      CROSS JOIN a
+ 
+      LEFT JOIN LATERAL (
+        SELECT ms.pbm_name, ms.payer_type
+        FROM (
+          SELECT pbm_name, payer_type, 1 AS priority FROM master_sheet m
+           WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+             AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+             AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
+          UNION ALL
+          SELECT pbm_name, payer_type, 2 FROM master_sheet m
+           WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+             AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+          UNION ALL
+          SELECT pbm_name, payer_type, 3 FROM master_sheet m
+           WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+          ORDER BY priority LIMIT 1
+        ) ms
+      ) pbm ON true
+ 
+      LEFT JOIN ws ON ws.ndc_normalized
+                    = LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
+ 
+      WHERE i.audit_id = $1
+ 
+      GROUP BY i.ndc
+ 
+      -- ✅ SCENE 2 — NO HAVING clause, every drug stays in the result
+ 
+      ORDER BY total_billed DESC
+      `,
       [id],
     );
 
@@ -173,6 +270,9 @@ export const uploadInventoryFile = async (req, res) => {
       ? JSON.parse(req.body.headerMapping)
       : {};
 
+    const excludeTransferred = req.body.excludeTransferred === "true";
+    const excludeUnbilled = req.body.excludeUnbilled === "true";
+
     if (!file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
@@ -181,12 +281,14 @@ export const uploadInventoryFile = async (req, res) => {
       id,
       file.filename,
       headerMapping,
+      { excludeTransferred, excludeUnbilled },
     );
 
     return res.status(200).json({
       message: "Inventory file uploaded successfully",
       file: saved,
       headerMapping,
+      excluded: { excludeTransferred, excludeUnbilled },
     });
   } catch (err) {
     console.error("Upload error:", err);
@@ -368,35 +470,47 @@ export const getInventoryDetail = async (req, res) => {
     const { id, ndc } = req.params;
 
     const result = await pool.query(
-      `SELECT
-        i.rx_number,
-        TO_CHAR(i.date_filled, 'YYYY-MM-DD') AS date_filled,
-        i.quantity,
-        'PRIMERX' AS type,
-        i.primary_bin AS pri_bin,
-        i.primary_pcn AS pri_pcn,
-        i.primary_group AS pri_group,
-        COALESCE(pbm.pbm_name, '') AS pri_insurance,
-        COALESCE(i.primary_paid, 0) AS pri_paid,
-        COALESCE(i.secondary_bin, '') AS sec_bin,
-        COALESCE(i.secondary_paid, 0) AS sec_paid
-      FROM inventory_rows i
-      LEFT JOIN LATERAL (
-        SELECT COALESCE(
-          (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
-           WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-             AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
-             AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))),
-          (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
-           WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,'')))
-             AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))),
-          (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
-           WHERE UPPER(TRIM(m.bin)) = UPPER(TRIM(COALESCE(i.primary_bin,''))))
-        ) AS pbm_name
-      ) pbm ON true
-      WHERE i.audit_id = $1
-        AND LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
-      ORDER BY i.date_filled ASC`,
+      `WITH a AS (
+         SELECT inventory_start_date, inventory_end_date
+         FROM audits WHERE id = $1
+       )
+       SELECT
+         i.rx_number,
+         TO_CHAR(i.date_filled, 'YYYY-MM-DD') AS date_filled,
+         i.quantity,
+         'PRIMERX' AS type,
+         i.primary_bin AS pri_bin,
+         i.primary_pcn AS pri_pcn,
+         i.primary_group AS pri_group,
+         COALESCE(pbm.pbm_name, '') AS pri_insurance,
+         COALESCE(i.primary_paid, 0) AS pri_paid,
+         COALESCE(i.secondary_bin, '') AS sec_bin,
+         COALESCE(i.secondary_paid, 0) AS sec_paid,
+         CASE
+           WHEN i.date_filled IS NULL THEN false
+           WHEN (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL) THEN false
+           WHEN i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date THEN false
+           ELSE true
+         END AS is_outside_date_range
+       FROM inventory_rows i
+       CROSS JOIN a
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+           (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
+            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+              AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+              AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))),
+           (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
+            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+              AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))),
+           (SELECT STRING_AGG(DISTINCT pbm_name, ', ') FROM master_sheet m
+            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0'))
+         ) AS pbm_name
+       ) pbm ON true
+       WHERE i.audit_id = $1
+         AND LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
+           = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
+       ORDER BY i.date_filled ASC NULLS LAST`,
       [id, ndc],
     );
 
@@ -407,64 +521,41 @@ export const getInventoryDetail = async (req, res) => {
   }
 };
 
-// export const getWholesalerDetail = async (req, res) => {
-//   try {
-//     const { id, ndc } = req.params;
-
-//     const result = await pool.query(
-//       `SELECT w.*, wf.wholesaler_name
-//       FROM wholesaler_rows w
-//       LEFT JOIN wholesaler_files wf ON w.wholesaler_file_id = wf.id
-//       WHERE w.audit_id = $1
-//         AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
-//       ORDER BY w.id ASC`,
-//       [id, ndc],
-//     );
-
-//     // Map to consistent field names
-//     const rows = result.rows.map((r) => ({
-//       type: r.wholesaler_name || r.type || "MCKESSON",
-//       date_ordered: r.invoice_date
-//         ? new Date(r.invoice_date).toLocaleDateString("en-US", {
-//             month: "2-digit",
-//             day: "2-digit",
-//             year: "numeric",
-//           })
-//         : "",
-//       quantity: r.quantity || 0,
-//     }));
-
-//     return res.json(rows);
-//   } catch (error) {
-//     console.error("Wholesaler detail error:", error);
-//     return res.status(500).json({ message: error.message });
-//   }
-// };
-
 export const getWholesalerDetail = async (req, res) => {
   try {
     const { id, ndc } = req.params;
 
     const result = await pool.query(
-      `SELECT
+      `WITH a AS (
+         SELECT wholesaler_start_date, wholesaler_end_date
+         FROM audits WHERE id = $1
+       )
+       SELECT
          w.id,
          wf.wholesaler_name,
          TO_CHAR(w.invoice_date, 'YYYY-MM-DD') AS invoice_date,
-         w.quantity
+         w.quantity,
+         CASE
+           WHEN w.invoice_date IS NULL THEN false
+           WHEN (a.wholesaler_start_date IS NULL AND a.wholesaler_end_date IS NULL) THEN false
+           WHEN w.invoice_date BETWEEN a.wholesaler_start_date AND a.wholesaler_end_date THEN false
+           ELSE true
+         END AS is_outside_date_range
        FROM wholesaler_rows w
+       CROSS JOIN a
        LEFT JOIN wholesaler_files wf ON w.wholesaler_file_id = wf.id
        WHERE w.audit_id = $1
-         AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
+         AND LPAD(REGEXP_REPLACE(w.ndc, '[^0-9]', '', 'g'), 11, '0')
+           = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
        ORDER BY w.invoice_date ASC NULLS LAST, w.id ASC`,
       [id, ndc],
     );
 
-    console.log("🔍 getWholesalerDetail sample row:", result.rows[0]);
-
     const rows = result.rows.map((r) => ({
       type: r.wholesaler_name || "MCKESSON",
-      date_ordered: r.invoice_date || "", // YYYY-MM-DD string
+      date_ordered: r.invoice_date || "",
       quantity: Number(r.quantity ?? 0),
+      is_outside_date_range: !!r.is_outside_date_range,
     }));
 
     return res.json(rows);
@@ -492,15 +583,83 @@ export const getDrugWholesalerDetail = async (req, res) => {
   }
 };
 
-// export const getCommunityData = async (req, res) => {
+export const getCommunityData = async (req, res) => {
+  try {
+    const { ndc } = req.params;
+
+    const {
+      includeGroups = "false",
+      mode = "state",
+      userId,
+      bin,
+      pcn,
+      grp,
+      range,
+    } = req.query;
+
+    const result = await auditService.getCommunityDataGlobal(ndc, {
+      includeGroups: includeGroups === "true",
+      mode,
+      userId,
+      bin,
+      pcn,
+      grp,
+      range,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Community data error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+// export const getCommunityData1 = async (req, res) => {
 //   try {
 //     const { ndc } = req.params;
-//     const { includeGroups = "false", startDate, endDate } = req.query;
+
+//     const {
+//       includeGroups = "false",
+//       startDate,
+//       endDate,
+//       range,
+//       mode = "state",
+//       userId,
+//       bin,
+//       pcn,
+//       grp,
+//     } = req.query;
+
+//     let finalStartDate = startDate;
+//     let finalEndDate = endDate;
+
+//     // ✅ RANGE LOGIC
+//     if (range) {
+//       const now = new Date();
+
+//       if (range === "last_90_days") {
+//         const past = new Date();
+//         past.setDate(now.getDate() - 90);
+//         finalStartDate = past.toISOString().split("T")[0];
+//         finalEndDate = now.toISOString().split("T")[0];
+//       }
+
+//       if (range === "this_year") {
+//         const start = new Date(now.getFullYear(), 0, 1);
+//         finalStartDate = start.toISOString().split("T")[0];
+//         finalEndDate = now.toISOString().split("T")[0];
+//       }
+//     }
 
 //     const result = await auditService.getCommunityDataGlobal(ndc, {
 //       includeGroups: includeGroups === "true",
-//       startDate,
-//       endDate,
+//       startDate: finalStartDate,
+//       endDate: finalEndDate,
+//       mode,
+//       userId,
+//       bin,
+//       pcn,
+//       grp,
 //     });
 
 //     return res.json(result);
@@ -510,32 +669,36 @@ export const getDrugWholesalerDetail = async (req, res) => {
 //   }
 // };
 
-export const getCommunityData = async (req, res) => {
-  try {
-    const { ndc } = req.params;
+// export const getCommunityData = async (req, res) => {
+//   try {
+//     const { ndc } = req.params;
 
-    const {
-      includeGroups = "false",
-      startDate,
-      endDate,
-      mode = "state",
-      userId, // 👈 coming from frontend
-    } = req.query;
+//     const {
+//       includeGroups = "false",
+//       startDate,
+//       endDate,
+//       mode = "state",
+//       userId,
+//       bin,
+//       pcn,
+//     } = req.query;
 
-    const result = await auditService.getCommunityDataGlobal(ndc, {
-      includeGroups: includeGroups === "true",
-      startDate,
-      endDate,
-      mode,
-      userId, // 👈 pass forward
-    });
+//     const result = await auditService.getCommunityDataGlobal(ndc, {
+//       includeGroups: includeGroups === "true",
+//       startDate,
+//       endDate,
+//       mode,
+//       userId,
+//       bin,
+//       pcn,
+//     });
 
-    return res.json(result);
-  } catch (error) {
-    console.error("Community data error:", error);
-    return res.status(500).json({ message: error.message });
-  }
-};
+//     return res.json(result);
+//   } catch (error) {
+//     console.error("Community data error:", error);
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
 
 export const getDrugLookup = async (req, res) => {
   try {
@@ -548,5 +711,81 @@ export const getDrugLookup = async (req, res) => {
   } catch (error) {
     console.error("getDrugLookup error:", error);
     return res.status(500).json({ message: error.message });
+  }
+};
+
+export const searchDrugNames = async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || String(q).trim().length < 2) {
+      return res.json([]);
+    }
+
+    const query = String(q).trim();
+
+    // Log the search (fire-and-forget, don't block the response)
+    // auditService.logDrugSearch(query);
+
+    const results = await auditService.searchDrugNames(query, 10);
+    return res.json(results);
+  } catch (error) {
+    console.error("Drug search error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const getDrugLookupGlobal = async (req, res) => {
+  try {
+    const { ingredient, bin, pcn, grp } = req.query;
+    if (!ingredient || !String(ingredient).trim()) {
+      return res.status(400).json({ error: "ingredient required" });
+    }
+
+    const ing = String(ingredient).trim();
+
+    // Log the submitted search (fire-and-forget, don't await)
+    auditService.logDrugSearch(ing);
+
+    const result = await auditService.getDrugLookupGlobal(ing, {
+      bin,
+      pcn,
+      grp,
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("getDrugLookupGlobal error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const getDrugLookupLanding = async (req, res) => {
+  try {
+    const result = await auditService.getDrugLookupLanding();
+    return res.json(result);
+  } catch (error) {
+    console.error("getDrugLookupLanding error:", error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const searchNdcSuggestions = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || String(q).trim().length < 2) return res.json([]);
+    const results = await auditService.searchNdcSuggestions(
+      String(q).trim(),
+      8,
+    );
+    return res.json(results);
+  } catch (err) {
+    // Only log/send safe scalar fields — never the raw error (it has the pg socket attached)
+    const msg =
+      err && err.message
+        ? String(err.message).slice(0, 500)
+        : "Failed to fetch NDC suggestions";
+    const code = err && err.code ? String(err.code) : "";
+    console.error("NDC suggestions error:", code, msg);
+    return res.status(500).json({ error: msg });
   }
 };
