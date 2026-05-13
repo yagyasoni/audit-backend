@@ -7,6 +7,7 @@ import supplierRoutes from "./routes/supplier.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import webhookRoutes from "./config/webhook.js";
 import inventoryViewRoutes from "./routes/inventoryView.routes.js";
+import publishingRoutes from "./routes/publishing.routes.js";
 
 const app = express();
 
@@ -31,5 +32,6 @@ app.use("/admin", adminRoutes);
 app.use("/api", supplierRoutes);
 app.use("/pay", paymentRoutes);
 app.use("/api/inventory-view", inventoryViewRoutes);
+app.use("/post", publishingRoutes);
 
 export default app;

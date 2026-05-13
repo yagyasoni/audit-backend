@@ -1437,6 +1437,76 @@ router.post("/impersonate", async (req, res) => {
 });
 
 // PUT /auth/user-status/:id
+// router.put("/user-status/:id", async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { status } = req.body;
+
+//     // Validate input
+//     if (!["active", "inactive"].includes(status)) {
+//       return res.status(400).json({
+//         message: "Invalid status value",
+//       });
+//     }
+
+//     const result = await pool.query(
+//       `UPDATE users
+//        SET status = $1
+//        WHERE id = $2
+//        RETURNING id, name, email, status`,
+//       [status, id],
+//     );
+
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({
+//         message: "User not found",
+//       });
+//     }
+
+//     await resend.emails.send({
+//       from: process.env.EMAIL_FROM,
+//       to: result.rows[0].email,
+//       subject: "Admin Login OTP (Resent)",
+//       html: `
+// <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+//   <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+
+//     <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+//       Admin Login OTP
+//     </div>
+
+//     <div style="padding:24px; color:#1f2937;">
+//       <p>Your new admin login OTP is:</p>
+
+//       <div style="text-align:center; margin:24px 0;">
+//         <span style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#0f172a;">
+//           ${otp}
+//         </span>
+//       </div>
+
+//       <p>This OTP will expire in 5 minutes.</p>
+//       <p>If you did not request this, please ignore this email.</p>
+//     </div>
+
+//     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+//       © 2026 AuditProRx. All rights reserved.<br/>
+//       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+//     </div>
+
+//   </div>
+// </div>`,
+//     });
+
+//     res.status(200).json({
+//       message: `User ${status} successfully`,
+//       user: result.rows[0],
+//     });
+//   } catch (error) {
+//     console.error("Status update error:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
 router.put("/user-status/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1463,9 +1533,64 @@ router.put("/user-status/:id", async (req, res) => {
       });
     }
 
+    const user = result.rows[0];
+
+    // Email content based on status
+    const isActive = status === "active";
+
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: user.email,
+      subject: isActive
+        ? "Your AuditProRx Profile Has Been Activated"
+        : "Your AuditProRx Profile Has Been Deactivated",
+
+      html: `
+<div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+
+    <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+      ${isActive ? "Profile Activated" : "Profile Deactivated"}
+    </div>
+
+    <div style="padding:24px; color:#1f2937; line-height:1.6;">
+      <p>Hi ${user.name || "User"},</p>
+
+      ${
+        isActive
+          ? `
+            <p>Your AuditProRx profile has now been successfully <strong>activated</strong>.</p>
+
+            <p>You can now access and use all the available features and services on the AuditProRx platform.</p>
+
+            <p>We’re glad to have you onboard.</p>
+          `
+          : `
+            <p>Your AuditProRx profile has currently been marked as <strong>inactive</strong>.</p>
+
+            <p>You will temporarily not be able to access platform features and services.</p>
+
+            <p>Please reach out to our support team for assistance. Reactivation may take approximately <strong>24 to 48 hours</strong> after review.</p>
+          `
+      }
+
+      <p style="margin-top:24px;">
+        Regards,<br/>
+        AuditProRx Team
+      </p>
+    </div>
+
+    <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+      © 2026 AuditProRx. All rights reserved.
+    </div>
+
+  </div>
+</div>`,
+    });
+
     res.status(200).json({
       message: `User ${status} successfully`,
-      user: result.rows[0],
+      user,
     });
   } catch (error) {
     console.error("Status update error:", error);

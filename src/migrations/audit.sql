@@ -173,6 +173,7 @@ CREATE TABLE suppliers (
   id UUID PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
+  phone_number VARCHAR(20),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -365,3 +366,95 @@ CREATE TABLE IF NOT EXISTS inventory_bookmarks (
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, listing_id)
 );
+
+-- =========================================================
+-- PUBLISHING POSTS
+-- Admin-created articles/posts
+-- =========================================================
+
+CREATE TABLE publishing_posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    article_id TEXT UNIQUE NOT NULL,
+
+    title TEXT NOT NULL,
+    category TEXT DEFAULT 'General',
+
+    content TEXT NOT NULL,
+
+    status TEXT NOT NULL
+    CHECK (status IN ('Published', 'Draft'))
+    DEFAULT 'Published',
+
+    views INTEGER DEFAULT 0,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_publishing_posts_status
+ON publishing_posts(status);
+
+CREATE INDEX idx_publishing_posts_created_at
+ON publishing_posts(created_at DESC);
+
+
+
+-- =========================================================
+-- POST REACTIONS
+-- Client-side reactions
+-- =========================================================
+
+CREATE TABLE publishing_reactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    post_id UUID NOT NULL
+    REFERENCES publishing_posts(id)
+    ON DELETE CASCADE,
+
+    user_id UUID
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+    reaction_type TEXT NOT NULL
+    CHECK (
+        reaction_type IN (
+            'Insightful',
+            'Helpful',
+            'Useful',
+            'Forward Thinking'
+        )
+    ),
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(post_id, user_id)
+);
+
+CREATE INDEX idx_publishing_reactions_post
+ON publishing_reactions(post_id);
+
+
+
+-- =========================================================
+-- POST RESPONSES / COMMENTS
+-- =========================================================
+
+CREATE TABLE publishing_responses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    post_id UUID NOT NULL
+    REFERENCES publishing_posts(id)
+    ON DELETE CASCADE,
+
+    user_id UUID
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+    comment TEXT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_publishing_responses_post
+ON publishing_responses(post_id);

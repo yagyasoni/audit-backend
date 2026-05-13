@@ -716,7 +716,7 @@ export const getDrugLookup = async (req, res) => {
 
 export const searchDrugNames = async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, type = "name" } = req.query;
 
     if (!q || String(q).trim().length < 2) {
       return res.json([]);
@@ -724,8 +724,15 @@ export const searchDrugNames = async (req, res) => {
 
     const query = String(q).trim();
 
-    // Log the search (fire-and-forget, don't block the response)
-    // auditService.logDrugSearch(query);
+    // ── NDC autocomplete branch ──
+    if (type === "ndc") {
+      const results = await auditService.searchNdcAutocomplete(query, 10);
+      return res.json(results);
+    }
+
+    // ── Drug-name autocomplete (default) ──
+    // Fire-and-forget log only for name searches; NDCs aren't ingredients
+    auditService.logDrugSearch(query);
 
     const results = await auditService.searchDrugNames(query, 10);
     return res.json(results);
@@ -737,14 +744,29 @@ export const searchDrugNames = async (req, res) => {
 
 export const getDrugLookupGlobal = async (req, res) => {
   try {
-    const { ingredient, bin, pcn, grp } = req.query;
+    const { ingredient, bin, pcn, grp, ndc, type } = req.query;
+
+    // ── NDC mode ──
+    if (type === "ndc" || (ndc && String(ndc).trim())) {
+      const ndcValue = String(ndc || ingredient || "").trim();
+      if (!ndcValue) {
+        return res.status(400).json({ error: "ndc required" });
+      }
+      const result = await auditService.getDrugLookupGlobal("", {
+        bin,
+        pcn,
+        grp,
+        ndc: ndcValue,
+      });
+      return res.json(result);
+    }
+
+    // ── Ingredient mode (existing behavior) ──
     if (!ingredient || !String(ingredient).trim()) {
       return res.status(400).json({ error: "ingredient required" });
     }
 
     const ing = String(ingredient).trim();
-
-    // Log the submitted search (fire-and-forget, don't await)
     auditService.logDrugSearch(ing);
 
     const result = await auditService.getDrugLookupGlobal(ing, {

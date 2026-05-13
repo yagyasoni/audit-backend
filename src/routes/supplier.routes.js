@@ -33,6 +33,7 @@ router.get("/suppliers", async (req, res) => {
         s.id,
         s.name,
         s.email,
+        s.phone_number,
         s.created_at,
         sm.mappings
       FROM suppliers s
@@ -180,13 +181,13 @@ router.post("/user-suppliers/:userId", async (req, res) => {
 
 router.post("/suppliers", async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, phone_number } = req.body;
 
     const result = await pool.query(
-      `INSERT INTO suppliers (id, name, email)
-       VALUES ($1, $2, $3)
+      `INSERT INTO suppliers (id, name, email, phone_number)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [crypto.randomUUID(), name, email || null],
+      [crypto.randomUUID(), name, email || null, phone_number || null],
     );
 
     res.json(result.rows[0]);
@@ -353,14 +354,14 @@ router.get("/bin-search", async (req, res) => {
 router.put("/suppliers/:id/email", async (req, res) => {
   try {
     const { id } = req.params;
-    const { email } = req.body;
+    const { email, phone_number } = req.body;
 
     const result = await pool.query(
       `UPDATE suppliers
-       SET email = $1
-       WHERE id = $2
+       SET email = $1, phone_number = $2
+       WHERE id = $3
        RETURNING *`,
-      [email, id],
+      [email, phone_number, id],
     );
 
     if (result.rowCount === 0) {
