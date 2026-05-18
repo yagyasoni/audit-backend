@@ -967,7 +967,7 @@ export const getCommunityDataGlobal = async (
     bin,
     pcn,
     grp,
-    range, // "last_90_days" | "this_year" | "all_time" | undefined
+    range, // "last_30_days" | "last_90_days" | "this_year" | "all_time" | undefined
   } = {},
 ) => {
   const normalizedNdc = ndc.replace(/\D/g, "").padStart(11, "0");
@@ -1000,7 +1000,9 @@ export const getCommunityDataGlobal = async (
   `;
 
   // ✅ Range / timeline filter
-  if (range === "last_90_days") {
+  if (range === "last_30_days") {
+    filters += ` AND i.date_filled >= CURRENT_DATE - INTERVAL '30 days'`;
+  } else if (range === "last_90_days") {
     filters += ` AND i.date_filled >= CURRENT_DATE - INTERVAL '90 days'`;
   } else if (range === "this_year") {
     filters += ` AND EXTRACT(YEAR FROM i.date_filled) = EXTRACT(YEAR FROM CURRENT_DATE)`;

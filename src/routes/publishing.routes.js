@@ -1,8 +1,10 @@
 import express from "express";
 import crypto from "crypto";
 import { pool } from "../config/db.js";
+import { Resend } from "resend";
 
 const router = express.Router();
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ============================================================
 // CREATE POST
@@ -11,7 +13,7 @@ const router = express.Router();
 
 router.post("/posts", async (req, res) => {
   try {
-    const { title, category, content, status } = req.body;
+    const { title, category, content, status, location } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({
@@ -30,9 +32,10 @@ router.post("/posts", async (req, res) => {
         title,
         category,
         content,
-        status
+        status,
+        location
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
       `,
       [
@@ -42,8 +45,94 @@ router.post("/posts", async (req, res) => {
         category || "General",
         content,
         status || "Published",
+        location || "All",
       ],
     );
+
+    const usersResult = await pool.query(
+      `
+      SELECT name, email
+      FROM users
+      WHERE status = 'active'
+      `,
+    );
+
+    const users = usersResult.rows;
+
+    // ============================================================
+    // SEND EMAILS
+    // ============================================================
+
+    // if (users.length > 0) {
+    //   try {
+    //     await Promise.all(
+    //       users.map((user) =>
+    //         resend.emails.send({
+    //           from: process.env.EMAIL_FROM,
+
+    //           to: user.email,
+
+    //           subject: `New Article Published - ${title}`,
+
+    //           html: `
+    //           <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+    //             <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+
+    //               <!-- Header -->
+    //               <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+    //                 New Article Published
+    //               </div>
+
+    //               <!-- Body -->
+    //               <div style="padding:24px; color:#1f2937;">
+
+    //                 <p style="margin-bottom:16px;">
+    //                   Hello ${user.name},
+    //                 </p>
+
+    //                 <p style="margin-bottom:16px;">
+    //                   A new article has been published on the platform.
+    //                 </p>
+
+    //                 <div style="border:1px solid #e2e8f0; border-radius:8px; padding:18px; margin:20px 0;">
+
+    //                   <h2 style="margin:0 0 10px 0; color:#0f172a;">
+    //                     ${title}
+    //                   </h2>
+
+    //                   <p style="margin:0; color:#64748b;">
+    //                     Category: ${category || "General"}
+    //                   </p>
+
+    //                 </div>
+
+    //                 <p style="margin-bottom:16px;">
+    //                   Login to your account to read the complete article.
+    //                 </p>
+
+    //                 <div style="text-align:center; margin-top:30px;">
+    //                   <span style="font-size:24px; font-weight:bold; letter-spacing:3px; color:#0f172a;">
+    //                     A U D I T P R O R X
+    //                   </span>
+    //                 </div>
+
+    //               </div>
+
+    //               <!-- Footer -->
+    //               <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+    //                 © 2026 AuditProRx. All rights reserved.
+    //               </div>
+
+    //             </div>
+    //           </div>
+    //           `,
+    //         }),
+    //       ),
+    //     );
+    //   } catch (emailErr) {
+    //     console.error("Email sending failed:", emailErr);
+    //   }
+    // }
 
     res.status(201).json({
       success: true,
@@ -64,15 +153,59 @@ router.post("/posts", async (req, res) => {
 // GET /api/publishing/posts
 // ============================================================
 
+// router.get("/posts", async (req, res) => {
+//   try {
+//     const result = await pool.query(
+//       `
+//       SELECT
+//         p.*,
+
+//         COUNT(DISTINCT r.id)::INTEGER AS reactions,
+//         COUNT(DISTINCT c.id)::INTEGER AS responses
+
+//       FROM publishing_posts p
+
+//       LEFT JOIN publishing_reactions r
+//       ON p.id = r.post_id
+
+//       LEFT JOIN publishing_responses c
+//       ON p.id = c.post_id
+
+//       GROUP BY p.id
+
+//       ORDER BY p.created_at DESC
+//       `,
+//     );
+
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error("Fetch posts error:", err);
+
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch posts",
+//     });
+//   }
+// });
+
 router.get("/posts", async (req, res) => {
   try {
     const result = await pool.query(
       `
       SELECT
-        p.*,
+          p.*,
 
-        COUNT(DISTINCT r.id)::INTEGER AS reactions,
-        COUNT(DISTINCT c.id)::INTEGER AS responses
+          COUNT(DISTINCT r.id)::INTEGER AS reactions,
+
+          COUNT(DISTINCT c.id)::INTEGER AS responses,
+
+          COUNT(
+            DISTINCT CASE
+              WHEN m.sender_type = 'client'
+              AND m.is_read = false
+              THEN m.id
+            END
+          )::INTEGER AS unread_messages
 
       FROM publishing_posts p
 
@@ -81,6 +214,9 @@ router.get("/posts", async (req, res) => {
 
       LEFT JOIN publishing_responses c
       ON p.id = c.post_id
+
+      LEFT JOIN publishing_chat_messages m
+      ON p.id = m.post_id
 
       GROUP BY p.id
 
@@ -167,7 +303,7 @@ router.put("/posts/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { title, category, content, status } = req.body;
+    const { title, category, content, status, location } = req.body;
 
     const result = await pool.query(
       `
@@ -177,13 +313,14 @@ router.put("/posts/:id", async (req, res) => {
         category = $2,
         content = $3,
         status = $4,
+        location = $5,
         updated_at = NOW()
 
-      WHERE id = $5
+      WHERE id = $6
 
       RETURNING *
       `,
-      [title, category, content, status, id],
+      [title, category, content, status, location, id],
     );
 
     if (result.rowCount === 0) {
@@ -462,6 +599,249 @@ router.get("/engagement/:postId", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch engagement",
+    });
+  }
+});
+
+router.post("/chat/client", async (req, res) => {
+  try {
+    const { post_id, user_id, message } = req.body;
+
+    if (!post_id || !user_id || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    // =========================================
+    // CHECK CHAT ENABLED
+    // =========================================
+
+    const post = await pool.query(
+      `
+      SELECT chat_enabled
+      FROM publishing_posts
+      WHERE id = $1
+      `,
+      [post_id],
+    );
+
+    if (post.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    if (!post.rows[0].chat_enabled) {
+      return res.status(403).json({
+        success: false,
+        message: "Chat disabled",
+      });
+    }
+
+    // =========================================
+    // BAD WORD FILTER
+    // =========================================
+
+    // return res.status(400).json({
+    //   success: false,
+    //   message: "Message contains inappropriate language",
+    // });
+
+    // =========================================
+    // SAVE MESSAGE
+    // =========================================
+
+    const result = await pool.query(
+      `
+      INSERT INTO publishing_chat_messages (
+        id,
+        post_id,
+        user_id,
+        sender_type,
+        message
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'client',
+        $4
+      )
+      RETURNING *
+      `,
+      [crypto.randomUUID(), post_id, user_id, message],
+    );
+
+    res.status(201).json({
+      success: true,
+      chat: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Client chat error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to send message",
+    });
+  }
+});
+
+router.post("/chat/admin", async (req, res) => {
+  try {
+    const { post_id, message } = req.body;
+
+    if (!post_id || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO publishing_chat_messages (
+        id,
+        post_id,
+        sender_type,
+        message,
+        is_read
+      )
+      VALUES (
+        $1,
+        $2,
+        'admin',
+        $3,
+        true
+      )
+      RETURNING *
+      `,
+      [crypto.randomUUID(), post_id, message],
+    );
+
+    res.json({
+      success: true,
+      chat: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Admin chat error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to send admin message",
+    });
+  }
+});
+
+router.get("/chat/:postId", async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    // const messages = await pool.query(
+    //   `
+    //   SELECT
+    //     id,
+    //     sender_type,
+    //     message,
+    //     is_read,
+    //     created_at
+
+    //   FROM publishing_chat_messages
+
+    //   WHERE post_id = $1
+
+    //   ORDER BY created_at ASC
+    //   `,
+    //   [postId],
+    // );
+
+    const messages = await pool.query(
+      `
+  SELECT
+    m.id,
+    m.sender_type,
+    m.message,
+    m.is_read,
+    m.created_at,
+
+    u.name AS user_name,
+
+    pd.pharmacy_name
+
+  FROM publishing_chat_messages m
+
+  LEFT JOIN users u
+  ON m.user_id = u.id
+
+  LEFT JOIN pharmacy_details pd
+  ON pd.user_id = u.id
+
+  WHERE m.post_id = $1
+
+  ORDER BY m.created_at ASC
+  `,
+      [postId],
+    );
+
+    // =========================================
+    // MARK CLIENT MESSAGES AS READ
+    // =========================================
+
+    await pool.query(
+      `
+      UPDATE publishing_chat_messages
+      SET is_read = true
+      WHERE post_id = $1
+      AND sender_type = 'client'
+      `,
+      [postId],
+    );
+
+    res.json(messages.rows);
+  } catch (err) {
+    console.error("Get chat error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch chat messages",
+    });
+  }
+});
+
+router.put("/posts/:id/chat-toggle", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { chat_enabled } = req.body;
+
+    const result = await pool.query(
+      `UPDATE publishing_posts
+SET chat_enabled = $1
+WHERE id = $2
+RETURNING *
+      `,
+      [chat_enabled, id],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      post: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Toggle chat error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update chat setting",
     });
   }
 });

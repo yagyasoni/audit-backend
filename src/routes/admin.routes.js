@@ -688,4 +688,138 @@ router.delete("/feedbacks/:id", async (req, res) => {
   }
 });
 
+// =========================================================
+// PBM OPTIONS
+// =========================================================
+
+// ADD PBM OPTION
+router.post("/pbm-options", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({
+        message: "PBM name is required",
+      });
+    }
+
+    const existing = await pool.query(
+      `
+      SELECT * FROM pbm_options
+      WHERE LOWER(name) = LOWER($1)
+      `,
+      [name],
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(400).json({
+        message: "PBM option already exists",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO pbm_options (name)
+      VALUES ($1)
+      RETURNING *
+      `,
+      [name.trim()],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "Failed to add PBM option",
+    });
+  }
+});
+
+// GET ALL PBM OPTIONS
+router.get("/pbm-options", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM pbm_options
+      ORDER BY name ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "Failed to fetch PBM options",
+    });
+  }
+});
+
+// =========================================================
+// PAYER TYPE OPTIONS
+// =========================================================
+
+// ADD PAYER TYPE OPTION
+router.post("/payer-type-options", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name?.trim()) {
+      return res.status(400).json({
+        message: "Payer type name is required",
+      });
+    }
+
+    const existing = await pool.query(
+      `
+      SELECT * FROM payer_type_options
+      WHERE LOWER(name) = LOWER($1)
+      `,
+      [name],
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(400).json({
+        message: "Payer type already exists",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO payer_type_options (name)
+      VALUES ($1)
+      RETURNING *
+      `,
+      [name.trim()],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "Failed to add payer type",
+    });
+  }
+});
+
+// GET ALL PAYER TYPE OPTIONS
+router.get("/payer-type-options", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM payer_type_options
+      ORDER BY name ASC
+    `);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "Failed to fetch payer types",
+    });
+  }
+});
+
 export default router;

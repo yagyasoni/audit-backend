@@ -386,6 +386,10 @@ CREATE TABLE publishing_posts (
     CHECK (status IN ('Published', 'Draft'))
     DEFAULT 'Published',
 
+    location TEXT DEFAULT 'All',
+
+    chat_enabled BOOLEAN DEFAULT true,
+
     views INTEGER DEFAULT 0,
 
     created_at TIMESTAMP DEFAULT NOW(),
@@ -397,6 +401,9 @@ ON publishing_posts(status);
 
 CREATE INDEX idx_publishing_posts_created_at
 ON publishing_posts(created_at DESC);
+
+CREATE INDEX idx_publishing_posts_location
+ON publishing_posts(location);
 
 
 
@@ -458,3 +465,25 @@ CREATE TABLE publishing_responses (
 
 CREATE INDEX idx_publishing_responses_post
 ON publishing_responses(post_id);
+
+
+CREATE TABLE publishing_chat_messages (
+    id UUID PRIMARY KEY,
+
+    post_id UUID NOT NULL
+    REFERENCES publishing_posts(id)
+    ON DELETE CASCADE,
+
+    user_id UUID
+    REFERENCES users(id)
+    ON DELETE SET NULL,
+
+    sender_type VARCHAR(20) NOT NULL
+    CHECK (sender_type IN ('client', 'admin')),
+
+    message TEXT NOT NULL,
+
+    is_read BOOLEAN DEFAULT false,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
