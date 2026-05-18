@@ -63,76 +63,120 @@ router.post("/posts", async (req, res) => {
     // SEND EMAILS
     // ============================================================
 
-    // if (users.length > 0) {
-    //   try {
-    //     await Promise.all(
-    //       users.map((user) =>
-    //         resend.emails.send({
-    //           from: process.env.EMAIL_FROM,
+    if (users.length > 0) {
+      try {
+        await Promise.all(
+          users.map((user) =>
+            resend.emails.send({
+              from: process.env.EMAIL_FROM,
 
-    //           to: user.email,
+              to: user.email,
 
-    //           subject: `New Article Published - ${title}`,
+              subject: `New Article Published - ${title}`,
 
-    //           html: `
-    //           <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
-    //             <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+              html: `
+              <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+                <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
 
-    //               <!-- Header -->
-    //               <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
-    //                 New Article Published
-    //               </div>
+                  <!-- Header -->
+                  <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+                    New Article Published
+                  </div>
 
-    //               <!-- Body -->
-    //               <div style="padding:24px; color:#1f2937;">
+                  <!-- Body -->
+                  <div style="padding:24px; color:#1f2937;">
 
-    //                 <p style="margin-bottom:16px;">
-    //                   Hello ${user.name},
-    //                 </p>
+                    <p style="margin-bottom:16px;">
+                      Hello ${user.name},
+                    </p>
 
-    //                 <p style="margin-bottom:16px;">
-    //                   A new article has been published on the platform.
-    //                 </p>
+                    <p style="margin-bottom:16px;">
+                      A new article has been published on the platform.
+                    </p>
 
-    //                 <div style="border:1px solid #e2e8f0; border-radius:8px; padding:18px; margin:20px 0;">
+                    <div style="border:1px solid #e2e8f0; border-radius:8px; padding:18px; margin:20px 0;">
 
-    //                   <h2 style="margin:0 0 10px 0; color:#0f172a;">
-    //                     ${title}
-    //                   </h2>
+                      <h2 style="margin:0 0 10px 0; color:#0f172a;">
+                        ${title}
+                      </h2>
 
-    //                   <p style="margin:0; color:#64748b;">
-    //                     Category: ${category || "General"}
-    //                   </p>
+                      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
 
-    //                 </div>
+  <span
+    style="
+      display:inline-block;
+      background:#eff6ff;
+      color:#2563eb;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      letter-spacing:0.5px;
+      text-transform:uppercase;
+    "
+  >
+    Category: ${category || "General"}
+  </span>
 
-    //                 <p style="margin-bottom:16px;">
-    //                   Login to your account to read the complete article.
-    //                 </p>
+  <span
+    style="
+      display:inline-block;
+      background:${
+        location === "New York"
+          ? "#f5f3ff"
+          : location === "New Jersey"
+            ? "#ecfdf5"
+            : "#eff6ff"
+      };
+      color:${
+        location === "New York"
+          ? "#7c3aed"
+          : location === "New Jersey"
+            ? "#059669"
+            : "#2563eb"
+      };
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:600;
+      letter-spacing:0.5px;
+      text-transform:uppercase;
+    "
+  >
+    Location: ${location || "All"}
+  </span>
 
-    //                 <div style="text-align:center; margin-top:30px;">
-    //                   <span style="font-size:24px; font-weight:bold; letter-spacing:3px; color:#0f172a;">
-    //                     A U D I T P R O R X
-    //                   </span>
-    //                 </div>
+</div>
 
-    //               </div>
+                    </div>
 
-    //               <!-- Footer -->
-    //               <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
-    //                 © 2026 AuditProRx. All rights reserved.
-    //               </div>
+                    <p style="margin-bottom:16px;">
+                      Login to your account to read the complete article.
+                    </p>
 
-    //             </div>
-    //           </div>
-    //           `,
-    //         }),
-    //       ),
-    //     );
-    //   } catch (emailErr) {
-    //     console.error("Email sending failed:", emailErr);
-    //   }
-    // }
+                    <div style="text-align:center; margin-top:30px;">
+                      <span style="font-size:24px; font-weight:bold; letter-spacing:3px; color:#0f172a;">
+                        A U D I T P R O R X
+                      </span>
+                    </div>
+
+                  </div>
+
+                  <!-- Footer -->
+                  <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+                    © 2026 AuditProRx. All rights reserved.
+                  </div>
+
+                </div>
+              </div>
+              `,
+            }),
+          ),
+        );
+      } catch (emailErr) {
+        console.error("Email sending failed:", emailErr);
+      }
+    }
 
     res.status(201).json({
       success: true,
