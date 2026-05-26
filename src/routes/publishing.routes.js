@@ -63,7 +63,7 @@ router.post("/posts", async (req, res) => {
     // SEND EMAILS
     // ============================================================
 
-    if (users.length > 0) {
+    if (users.length > 0 && status === "Published") {
       try {
         await Promise.all(
           users.map((user) =>

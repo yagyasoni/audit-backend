@@ -3,7 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const { Pool } = pkg;
+const { Pool, types } = pkg;
+
+// Return DATE columns (OID 1082) as raw "YYYY-MM-DD" strings instead of JS
+// Date objects. The default parser builds a Date in the server's local
+// timezone; JSON.stringify then converts it to a UTC ISO string, shifting the
+// day by one on any server not in UTC. Keeping the raw string makes date
+// columns timezone-proof end to end.
+types.setTypeParser(1082, (val) => val);
 
 export const pool = new Pool({
   user: process.env.DB_USER,

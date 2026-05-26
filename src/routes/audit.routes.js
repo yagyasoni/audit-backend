@@ -22,6 +22,7 @@ import {
   getDrugLookupGlobal,
   getDrugLookupLanding,
   searchNdcSuggestions,
+  getAberrantRiskSummary,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -76,6 +77,7 @@ router.get("/", getAudits);
 router.get("/:id", getAuditById);
 router.get("/:id/inventory/rows", getInventoryRows);
 router.get("/:id/report", getFullReport);
+router.get("/:id/aberrant-summary", getAberrantRiskSummary);
 
 router.get("/:id/inventory-files", getInventoryFiles);
 router.get("/:id/wholesaler-files", getWholesalerFiles);

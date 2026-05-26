@@ -3,29 +3,67 @@ import Stripe from "stripe";
 import { pool } from "../config/db.js";
 
 const router = express.Router();
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const PRICE_MAP = {
+  base: process.env.STRIPE_BASE_PRICE_ID,
+
+  inventory_view: process.env.STRIPE_INVENTORY_PRICE_ID,
+
+  drug_lookup: process.env.STRIPE_DRUG_LOOKUP_PRICE_ID,
+
+  leads: process.env.STRIPE_LEADS_PRICE_ID,
+
+  full_access: process.env.STRIPE_FULL_ACCESS_PRICE_ID,
+};
 
 // =========================================
 // CREATE CHECKOUT SESSION
 // =========================================
+
 router.post("/create-checkout-session", async (req, res) => {
   try {
-    const { userId, email } = req.body;
+    const { userId, email, plans = [], referralCode = null } = req.body;
 
-    // ✅ VALIDATION
-    if (!userId || !email) {
+    if (!userId || !email || plans.length === 0) {
       return res.status(400).json({
-        error: "Missing userId or email",
+        error: "Missing required fields",
       });
     }
 
-    let customerId;
+    // FULL ACCESS CANNOT COMBINE
+    if (plans.includes("full_access") && plans.length > 1) {
+      return res.status(400).json({
+        error: "Full access cannot be combined",
+      });
+    }
+
+    // BASE REQUIRED
+    const addonPlans = ["inventory_view", "drug_lookup", "leads"];
+
+    const hasBase = plans.includes("base");
+
+    const hasAddon = plans.some((p) => addonPlans.includes(p));
+
+    if (hasAddon && !hasBase) {
+      return res.status(400).json({
+        error: "Base plan required for addons",
+      });
+    }
 
     // =========================================
-    // CHECK EXISTING CUSTOMER
+    // EXISTING CUSTOMER
     // =========================================
+
+    let customerId;
+
     const existing = await pool.query(
-      `SELECT stripe_customer_id FROM subscriptions WHERE user_id = $1`,
+      `
+      SELECT stripe_customer_id
+      FROM subscriptions
+      WHERE user_id = $1
+      `,
       [userId],
     );
 
@@ -35,65 +73,227 @@ router.post("/create-checkout-session", async (req, res) => {
       const customer = await stripe.customers.create({
         email,
       });
+
       customerId = customer.id;
     }
 
     // =========================================
-    // 🔥 IMPORTANT: INSERT BEFORE CHECKOUT
+    // LINE ITEMS
     // =========================================
+
+    const lineItems = plans.map((plan) => ({
+      price: PRICE_MAP[plan],
+      quantity: 1,
+    }));
+
+    // =========================================
+    // UPSERT TEMP RECORD
+    // =========================================
+
     await pool.query(
       `
-      INSERT INTO subscriptions (user_id, stripe_customer_id, status)
-      VALUES ($1, $2, $3)
+      INSERT INTO subscriptions (
+        user_id,
+        stripe_customer_id,
+        referral_code,
+        status
+      )
+
+      VALUES (
+        $1,
+        $2,
+        $3,
+        'inactive'
+      )
+
       ON CONFLICT (user_id)
+
       DO UPDATE SET
-        stripe_customer_id = EXCLUDED.stripe_customer_id,
-        status = EXCLUDED.status
+        stripe_customer_id =
+          EXCLUDED.stripe_customer_id,
+
+        referral_code =
+          EXCLUDED.referral_code,
+
+        updated_at = NOW()
       `,
-      [userId, customerId, "trialing"],
+      [userId, customerId, referralCode],
     );
 
     // =========================================
-    // CREATE CHECKOUT SESSION
+    // STRIPE SESSION
     // =========================================
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+
       customer: customerId,
-      payment_method_collection: "always", // 🔥 ADD THIS
+
+      allow_promotion_codes: true,
+
+      payment_method_collection: "always",
+
       metadata: {
-        userId: String(userId), // 🔥 FIXED
+        userId: String(userId),
       },
-      line_items: [
-        {
-          price: "price_1TMpYJBsVpwEk4PVQmGntJjP",
-          quantity: 1,
-        },
-      ],
 
       subscription_data: {
-        trial_period_days: 7,
-        // trial_end: Math.floor(Date.now() / 1000) + 60, // 2 minutes
-        // metadata: {
-        //   userId: String(userId), // 🔥 FIXED
-        // },
+        metadata: {
+          userId: String(userId),
+        },
       },
 
-      success_url: "https://www.auditprorx.com/Mainpage",
-      cancel_url: "https://www.auditprorx.com/cancel",
+      line_items: lineItems,
+
+      success_url: "http://localhost:3000/Mainpage?payment=success",
+
+      cancel_url: "http://localhost:3000/cancel",
     });
 
-    return res.json({ url: session.url });
+    return res.json({
+      url: session.url,
+    });
   } catch (error) {
-    // console.error("❌ Stripe session error:", error);
-    // return res.status(500).json({
-    //   error: "Failed to create checkout session",
-    // });
-    console.error("❌ Stripe session error:", error);
+    console.error("❌ Checkout error:", error);
+
     return res.status(500).json({
       error: "Failed to create checkout session",
-      message: error.message,
-      type: error.type,
-      raw: error.raw?.message,
+    });
+  }
+});
+
+// =========================================
+// ADMIN ACCESS CONTROL
+// =========================================
+
+router.post("/admin/grant-access", async (req, res) => {
+  try {
+    const {
+      userId,
+      inventory_reports_access,
+      inventory_view_access,
+      drug_lookup_access,
+      leads_access,
+      full_access,
+    } = req.body;
+
+    let inventoryReports = inventory_reports_access;
+
+    let inventoryView = inventory_view_access;
+
+    let drugLookup = drug_lookup_access;
+
+    let leads = leads_access;
+
+    // FULL ACCESS
+    if (full_access) {
+      inventoryReports = true;
+      inventoryView = true;
+      drugLookup = true;
+      leads = true;
+    }
+
+    // BASE REQUIRED
+    if (!inventoryReports && (inventoryView || drugLookup || leads)) {
+      return res.status(400).json({
+        error: "Base required for addons",
+      });
+    }
+
+    await pool.query(
+      `
+      INSERT INTO subscriptions (
+        user_id,
+        status,
+        admin_override,
+
+        inventory_reports_access,
+        inventory_view_access,
+        drug_lookup_access,
+        leads_access,
+        full_access,
+
+        updated_at
+      )
+
+      VALUES (
+        $1,
+        'active',
+        true,
+
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+
+        NOW()
+      )
+
+      ON CONFLICT (user_id)
+
+      DO UPDATE SET
+        status = 'active',
+
+        admin_override = true,
+
+        inventory_reports_access =
+          EXCLUDED.inventory_reports_access,
+
+        inventory_view_access =
+          EXCLUDED.inventory_view_access,
+
+        drug_lookup_access =
+          EXCLUDED.drug_lookup_access,
+
+        leads_access =
+          EXCLUDED.leads_access,
+
+        full_access =
+          EXCLUDED.full_access,
+
+        updated_at = NOW()
+      `,
+      [userId, inventoryReports, inventoryView, drugLookup, leads, full_access],
+    );
+
+    return res.json({
+      success: true,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: "Failed to grant access",
+    });
+  }
+});
+
+// =========================================
+// GET SUBSCRIPTION
+// =========================================
+
+router.get("/subscription/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM subscriptions
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    return res.json({
+      subscription: result.rows[0] || null,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Failed to fetch subscription",
     });
   }
 });
@@ -101,45 +301,59 @@ router.post("/create-checkout-session", async (req, res) => {
 // =========================================
 // CANCEL SUBSCRIPTION
 // =========================================
+
 router.post("/cancel-subscription", async (req, res) => {
   try {
     const { userId } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({
-        error: "Missing userId",
-      });
-    }
-
     const result = await pool.query(
-      `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
+      `
+      SELECT stripe_subscription_id
+      FROM subscriptions
+      WHERE user_id = $1
+      `,
       [userId],
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({
         error: "Subscription not found",
       });
     }
 
-    const subscriptionId = result.rows[0].stripe_subscription_id;
+    const stripeSubscriptionId = result.rows[0].stripe_subscription_id;
 
-    if (!subscriptionId) {
-      return res.status(400).json({
-        error: "Subscription not yet created",
-      });
-    }
+    // CANCEL AT PERIOD END
+    const subscription = await stripe.subscriptions.update(
+      stripeSubscriptionId,
+      {
+        cancel_at_period_end: true,
+      },
+    );
 
-    // ✅ Cancel at period end
-    await stripe.subscriptions.update(subscriptionId, {
-      cancel_at_period_end: true,
-    });
+    // SAVE GRACE PERIOD
+    await pool.query(
+      `
+      UPDATE subscriptions
+      SET
+        cancel_at_period_end = true,
+
+        grace_period_end =
+          to_timestamp($1),
+
+        updated_at = NOW()
+
+      WHERE user_id = $2
+      `,
+      [subscription.current_period_end, userId],
+    );
 
     return res.json({
-      message: "Subscription will cancel at period end",
+      success: true,
     });
   } catch (error) {
-    console.error("❌ Cancel error:", error);
+    console.error(error);
+
     return res.status(500).json({
       error: "Failed to cancel subscription",
     });
@@ -147,132 +361,322 @@ router.post("/cancel-subscription", async (req, res) => {
 });
 
 // =========================================
-// GET SUBSCRIPTION DETAILS
+// UPDATE SUBSCRIPTION
 // =========================================
-router.get("/subscription/:userId", async (req, res) => {
+
+router.post("/update-subscription", async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.body;
 
     const result = await pool.query(
       `
-      SELECT 
-        stripe_subscription_id,
-        stripe_customer_id,
-        status,
-        current_period_end,
-        grace_period_end
+      SELECT stripe_customer_id
       FROM subscriptions
       WHERE user_id = $1
       `,
       [userId],
     );
 
-    if (result.rows.length === 0) {
-      return res.json({ subscription: null });
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Subscription not found",
+      });
     }
 
-    // return res.json({
-    //   subscription: result.rows[0],
-    // });
+    const customerId = result.rows[0].stripe_customer_id;
 
-    const subscription = result.rows[0];
+    // STRIPE BILLING PORTAL
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
 
-    // ← fetch cancel_at_period_end live from Stripe
-    if (subscription.stripe_subscription_id) {
-      const stripeSub = await stripe.subscriptions.retrieve(
-        subscription.stripe_subscription_id,
-      );
-      subscription.cancel_at_period_end = stripeSub.cancel_at_period_end;
-    } else {
-      subscription.cancel_at_period_end = false;
-    }
-
-    return res.json({ subscription });
-  } catch (err) {
-    console.error("❌ Fetch error:", err);
-    res.status(500).json({
-      error: "Failed to fetch subscription",
+      return_url: "http://localhost:3000/settings",
     });
-  }
-});
-
-// =========================================
-// ADMIN: UPDATE / INSERT SUBSCRIPTION STATUS
-// =========================================
-router.post("/admin/update-subscription", async (req, res) => {
-  try {
-    const { userId, status } = req.body;
-
-    // ✅ Validation
-    if (!userId || !status) {
-      return res.status(400).json({
-        error: "Missing userId or status",
-      });
-    }
-
-    // ✅ Allowed statuses (important for safety)
-    const allowedStatuses = [
-      "trialing",
-      "active",
-      "past_due",
-      "canceled",
-      "inactive",
-      // "incomplete",
-    ];
-
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        error: "Invalid status value",
-      });
-    }
-
-    // =========================================
-    // UPSERT (Insert if not exists, else update)
-    // =========================================
-    const result = await pool.query(
-      `
-      INSERT INTO subscriptions (user_id, status)
-      VALUES ($1, $2)
-      ON CONFLICT (user_id)
-      DO UPDATE SET
-        status = EXCLUDED.status
-      RETURNING *;
-      `,
-      [userId, status],
-    );
 
     return res.json({
-      message: "Subscription updated successfully",
-      subscription: result.rows[0],
+      url: session.url,
     });
   } catch (error) {
-    console.error("❌ Admin update error:", error);
+    console.error(error);
+
     return res.status(500).json({
       error: "Failed to update subscription",
     });
   }
 });
 
-router.post("/renew-subscription", async (req, res) => {
+router.post("/update-subscription-plans", async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, plans = [] } = req.body;
+
+    if (!userId || plans.length === 0) {
+      return res.status(400).json({
+        error: "Missing fields",
+      });
+    }
+
+    // =====================================
+    // VALIDATION
+    // =====================================
+
+    // FULL ACCESS CANNOT COMBINE
+    if (plans.includes("full_access") && plans.length > 1) {
+      return res.status(400).json({
+        error: "Full access cannot combine",
+      });
+    }
+
+    // ADDONS REQUIRE BASE
+    const addonPlans = ["inventory_view", "drug_lookup", "leads"];
+
+    const hasBase = plans.includes("base");
+
+    const hasAddon = plans.some((p) => addonPlans.includes(p));
+
+    if (hasAddon && !hasBase) {
+      return res.status(400).json({
+        error: "Base plan required for addons",
+      });
+    }
+
+    // =====================================
+    // GET SUBSCRIPTION
+    // =====================================
+
     const result = await pool.query(
-      `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
+      `
+      SELECT stripe_subscription_id
+      FROM subscriptions
+      WHERE user_id = $1
+      `,
       [userId],
     );
 
-    const subId = result.rows[0]?.stripe_subscription_id;
-    if (!subId) return res.status(404).json({ error: "No subscription found" });
+    const subscriptionId = result.rows[0]?.stripe_subscription_id;
 
-    // Reactivate the subscription
-    await stripe.subscriptions.update(subId, {
-      cancel_at_period_end: false,
+    if (!subscriptionId) {
+      return res.status(404).json({
+        error: "Subscription not found",
+      });
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+    // =====================================
+    // REMOVE OLD ITEMS
+    // =====================================
+
+    const itemsToDelete = subscription.items.data.map((item) => ({
+      id: item.id,
+      deleted: true,
+    }));
+
+    // =====================================
+    // ADD NEW ITEMS
+    // =====================================
+
+    const newItems = plans.map((plan) => ({
+      price: PRICE_MAP[plan],
+    }));
+
+    // =====================================
+    // UPDATE STRIPE SUBSCRIPTION
+    // =====================================
+
+    await stripe.subscriptions.update(subscriptionId, {
+      items: [...itemsToDelete, ...newItems],
+
+      proration_behavior: "create_prorations",
     });
 
-    return res.json({ message: "Subscription successfully set to renew." });
+    return res.json({
+      success: true,
+    });
   } catch (error) {
-    console.error("Renewal error:", error);
-    res.status(500).json({ error: "Failed to renew subscription" });
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Failed to update subscription",
+    });
+  }
+});
+
+// =========================================
+// GET LIVE STRIPE SUBSCRIPTION DETAILS
+// =========================================
+
+// =========================================
+// GET LIVE STRIPE SUBSCRIPTION DETAILS
+// =========================================
+
+router.get("/stripe-subscription/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // =====================================
+    // GET DATABASE SUB
+    // =====================================
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM subscriptions
+      WHERE user_id = $1
+      `,
+      [userId],
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Subscription not found",
+      });
+    }
+
+    const dbSub = result.rows[0];
+
+    // =====================================
+    // NO STRIPE SUB
+    // =====================================
+
+    if (!dbSub.stripe_subscription_id) {
+      return res.json({
+        subscription: {
+          status: dbSub.status || "inactive",
+
+          current_plan: "No Active Plan",
+
+          active_plans: [],
+
+          current_period_end: null,
+
+          current_period_start: null,
+
+          cancel_at_period_end: false,
+
+          auto_renew: false,
+
+          amount: 0,
+
+          currency: "usd",
+        },
+      });
+    }
+
+    // =====================================
+    // LIVE STRIPE SUB
+    // =====================================
+
+    const subscription = await stripe.subscriptions.retrieve(
+      dbSub.stripe_subscription_id,
+      {
+        expand: ["items.data.price", "latest_invoice"],
+      },
+    );
+
+    // =====================================
+    // ACTIVE PLANS
+    // =====================================
+
+    const active_plans = [];
+
+    if (dbSub.full_access) {
+      active_plans.push("full_access");
+    } else {
+      if (dbSub.inventory_reports_access) {
+        active_plans.push("base");
+      }
+
+      if (dbSub.inventory_view_access) {
+        active_plans.push("inventory_view");
+      }
+
+      if (dbSub.drug_lookup_access) {
+        active_plans.push("drug_lookup");
+      }
+
+      if (dbSub.leads_access) {
+        active_plans.push("leads");
+      }
+    }
+
+    // =====================================
+    // CURRENT PLAN LABEL
+    // =====================================
+
+    const formatPlanName = (plans) => {
+      if (!plans.length) {
+        return "No Active Plan";
+      }
+
+      const labels = {
+        base: "Inventory Reports",
+        inventory_view: "Inventory View",
+        drug_lookup: "Drug Lookup",
+        leads: "Leads",
+        full_access: "Complete Suite",
+      };
+
+      return plans.map((p) => labels[p] || p).join(" + ");
+    };
+
+    // =====================================
+    // PRICING
+    // =====================================
+
+    let amount = 0;
+
+    let currency = "usd";
+
+    subscription.items.data.forEach((item) => {
+      amount += item.price?.unit_amount || 0;
+
+      currency = item.price?.currency || "usd";
+    });
+
+    // =====================================
+    // RESPONSE
+    // =====================================
+
+    return res.json({
+      subscription: {
+        id: subscription.id,
+
+        status: subscription.status,
+
+        cancel_at_period_end: subscription.cancel_at_period_end,
+
+        current_period_end: subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000)
+          : null,
+
+        current_period_start: subscription.current_period_start
+          ? new Date(subscription.current_period_start * 1000)
+          : null,
+
+        customer: subscription.customer,
+
+        current_plan: formatPlanName(active_plans),
+
+        active_plans,
+
+        auto_renew: !subscription.cancel_at_period_end,
+
+        amount,
+
+        currency,
+
+        subscription_type: dbSub.subscription_type,
+
+        grace_period_end: dbSub.grace_period_end,
+
+        admin_override: dbSub.admin_override,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      error: "Failed to fetch Stripe subscription",
+    });
   }
 });
 

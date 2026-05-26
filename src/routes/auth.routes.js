@@ -1542,15 +1542,15 @@ router.put("/user-status/:id", async (req, res) => {
       from: process.env.EMAIL_FROM,
       to: user.email,
       subject: isActive
-        ? "Your AuditProRx Profile Has Been Activated"
-        : "Your AuditProRx Profile Has Been Deactivated",
+        ? "Your AuditProRx Profile Has Been Verified"
+        : "Your AuditProRx Profile Has Been Unverified",
 
       html: `
 <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
   <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
 
     <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
-      ${isActive ? "Profile Activated" : "Profile Deactivated"}
+      ${isActive ? "Profile Verified" : "Profile Unverified"}
     </div>
 
     <div style="padding:24px; color:#1f2937; line-height:1.6;">
@@ -1559,7 +1559,7 @@ router.put("/user-status/:id", async (req, res) => {
       ${
         isActive
           ? `
-            <p>Your AuditProRx profile has now been successfully <strong>activated</strong>.</p>
+            <p>Your AuditProRx profile has now been successfully <strong>verified</strong>.</p>
 
             <p>You can now access and use all the available features and services on the AuditProRx platform.</p>
 

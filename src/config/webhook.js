@@ -1,15 +1,32 @@
 import express from "express";
 import Stripe from "stripe";
-import { pool } from "../config/db.js";
+import { pool } from "./db.js";
 
 const router = express.Router();
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const PRICE_MAP = {
+  base: process.env.STRIPE_BASE_PRICE_ID,
+
+  inventory_view: process.env.STRIPE_INVENTORY_PRICE_ID,
+
+  drug_lookup: process.env.STRIPE_DRUG_LOOKUP_PRICE_ID,
+
+  leads: process.env.STRIPE_LEADS_PRICE_ID,
+
+  full_access: process.env.STRIPE_FULL_ACCESS_PRICE_ID,
+};
 
 router.post(
   "/",
-  express.raw({ type: "application/json" }),
+  express.raw({
+    type: "application/json",
+  }),
+
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
+
     let event;
 
     try {
@@ -20,281 +37,369 @@ router.post(
       );
     } catch (err) {
       console.error("❌ Webhook signature error:", err.message);
+
       return res.sendStatus(400);
     }
 
-    console.log("✅ Webhook received:", event.type);
-
     try {
       switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object;
-          const userId = session.metadata?.userId; // This is the link to your manual record
+        case "checkout.session.completed":
 
-          if (session.subscription) {
-            const freshSub = await stripe.subscriptions.retrieve(
+        case "customer.subscription.created":
+
+        case "customer.subscription.updated":
+
+        case "invoice.paid": {
+          let subscription;
+
+          // =====================================
+          // CHECKOUT SESSION
+          // =====================================
+
+          if (event.type === "checkout.session.completed") {
+            const session = event.data.object;
+
+            if (!session.subscription) break;
+
+            subscription = await stripe.subscriptions.retrieve(
               session.subscription,
             );
 
-            // 🔥 THE FIX: Use userId to link Stripe data to your existing manual record
-            //       await pool.query(
-            //         `UPDATE subscriptions
-            //  SET stripe_customer_id = $1,
-            //      stripe_subscription_id = $2,
-            //      status = $3
-            //  WHERE user_id = $4`,
-            //         [session.customer, freshSub.id, freshSub.status, userId],
-            //       );
+            // FIX MISSING METADATA
+            if (!subscription.metadata?.userId && session.metadata?.userId) {
+              await stripe.subscriptions.update(subscription.id, {
+                metadata: {
+                  userId: session.metadata.userId,
+                },
+              });
 
-            //       await upsertSubscription(freshSub, "subscription");
-            const updateResult = await pool.query(
-              `UPDATE subscriptions 
-   SET stripe_customer_id = $1, 
-       stripe_subscription_id = $2, 
-       status = $3 
-   WHERE user_id = $4`,
-              [session.customer, freshSub.id, freshSub.status, userId],
-            );
-
-            if (updateResult.rowCount === 0) {
-              console.error(
-                "❌ checkout.session.completed: No DB row found for userId:",
-                userId,
+              subscription = await stripe.subscriptions.retrieve(
+                subscription.id,
               );
-              break; // Stop — don't proceed to upsertSubscription either
             }
-
-            await upsertSubscription(freshSub, "subscription");
-          } else {
-            // ⚠️ Race condition safety net — subscription not attached yet
-            // customer.subscription.created will fire right after and complete the link
-            await pool.query(
-              `UPDATE subscriptions 
-       SET stripe_customer_id = $1
-       WHERE user_id = $2`,
-              [session.customer, userId],
-            );
-          }
-          break;
-        }
-
-        case "customer.subscription.created": {
-          const sub = event.data.object;
-
-          // 🔍 LOG RAW PAYLOAD FIRST
-          console.log(
-            "🔍 RAW subscription.created PAYLOAD:",
-            JSON.stringify(
-              {
-                id: sub.id,
-                status: sub.status,
-                trial_end: sub.trial_end,
-                current_period_end: sub.current_period_end,
-                customer: sub.customer,
-              },
-              null,
-              2,
-            ),
-          );
-
-          // Fetch fresh to double-check
-          const freshSub = await stripe.subscriptions.retrieve(sub.id);
-          console.log(
-            "🔍 FRESH SUB RETRIEVE:",
-            JSON.stringify(
-              {
-                id: freshSub.id,
-                status: freshSub.status,
-                trial_end: freshSub.trial_end,
-                current_period_end: freshSub.current_period_end,
-                customer: freshSub.customer,
-              },
-              null,
-              2,
-            ),
-          );
-
-          const dbCheck = await pool.query(
-            `SELECT user_id, stripe_customer_id FROM subscriptions WHERE stripe_customer_id = $1`,
-            [freshSub.customer],
-          );
-          console.log("🔍 DB ROW FOUND:", dbCheck.rows);
-
-          if (dbCheck.rows.length === 0) {
-            console.log(
-              "❌ No DB row — cannot update. Customer ID:",
-              freshSub.customer,
-            );
-            break;
           }
 
-          await upsertSubscription(freshSub, "customer");
-          console.log("✅ subscription.created saved successfully");
+          // =====================================
+          // INVOICE PAID
+          // =====================================
+          else if (event.type === "invoice.paid") {
+            const invoice = event.data.object;
+
+            if (!invoice.subscription) break;
+
+            subscription = await stripe.subscriptions.retrieve(
+              invoice.subscription,
+            );
+          }
+
+          // =====================================
+          // SUB CREATED / UPDATED
+          // =====================================
+          else {
+            const subObject = event.data.object;
+
+            subscription = await stripe.subscriptions.retrieve(subObject.id);
+          }
+
+          console.log("=================================");
+          console.log("EVENT:", event.type);
+          console.log("SUB ID:", subscription.id);
+          console.log("METADATA:", subscription.metadata);
+          console.log("=================================");
+
+          await syncSubscription(subscription);
+
           break;
         }
 
-        case "customer.subscription.updated": {
-          const sub = event.data.object;
-          console.log(
-            "🔍 subscription.updated:",
-            JSON.stringify(
-              {
-                id: sub.id,
-                status: sub.status,
-                trial_end: sub.trial_end,
-                current_period_end: sub.current_period_end,
-              },
-              null,
-              2,
-            ),
-          );
-
-          const freshSub = await stripe.subscriptions.retrieve(sub.id);
-          await upsertSubscription(freshSub, "subscription");
-          console.log(
-            "🔄 Subscription updated:",
-            freshSub.id,
-            "→",
-            freshSub.status,
-          );
-          break;
-        }
-
-        case "invoice.paid": {
-          const invoice = event.data.object;
-          if (!invoice.subscription) break;
-
-          const freshSub = await stripe.subscriptions.retrieve(
-            invoice.subscription,
-          );
-          console.log(
-            "💰 invoice.paid - fresh sub:",
-            JSON.stringify(
-              {
-                id: freshSub.id,
-                status: freshSub.status,
-                trial_end: freshSub.trial_end,
-                current_period_end: freshSub.current_period_end,
-              },
-              null,
-              2,
-            ),
-          );
-
-          await upsertSubscription(freshSub, "subscription");
-          console.log("💰 Payment success:", invoice.subscription);
-          break;
-        }
+        // =====================================
+        // PAYMENT FAILED
+        // =====================================
 
         case "invoice.payment_failed": {
           const invoice = event.data.object;
-          const subId = invoice.subscription;
-          if (!subId) break;
 
-          const result = await pool.query(
-            `SELECT current_period_end FROM subscriptions WHERE stripe_subscription_id = $1`,
-            [subId],
+          if (!invoice.subscription) break;
+
+          await pool.query(
+            `
+            UPDATE subscriptions
+            SET
+              status = 'past_due',
+              updated_at = NOW()
+            WHERE stripe_subscription_id = $1
+            `,
+            [invoice.subscription],
           );
 
-          console.log("🔍 payment_failed DB row:", result.rows);
-
-          if (result.rows.length > 0 && result.rows[0].current_period_end) {
-            const currentEnd = new Date(result.rows[0].current_period_end);
-            const graceEnd = new Date(currentEnd);
-            graceEnd.setDate(graceEnd.getDate() + 30);
-
-            await pool.query(
-              `UPDATE subscriptions SET status = 'past_due', grace_period_end = $1 WHERE stripe_subscription_id = $2`,
-              [graceEnd, subId],
-            );
-            console.log("⚠️ Grace period set until:", graceEnd);
-          }
           break;
         }
 
+        // =====================================
+        // SUB DELETED
+        // =====================================
+
         case "customer.subscription.deleted": {
-          const sub = event.data.object;
+          const subscription = event.data.object;
+
           await pool.query(
-            `UPDATE subscriptions SET status = 'canceled', grace_period_end = NULL WHERE stripe_subscription_id = $1`,
-            [sub.id],
+            `
+            UPDATE subscriptions
+            SET
+              status = 'canceled',
+
+              subscription_type = 'none',
+
+              inventory_reports_access = false,
+
+              inventory_view_access = false,
+
+              drug_lookup_access = false,
+
+              leads_access = false,
+
+              full_access = false,
+
+              active_price_ids = ARRAY[]::TEXT[],
+
+              cancel_at_period_end = false,
+
+              updated_at = NOW()
+
+            WHERE stripe_subscription_id = $1
+            `,
+            [subscription.id],
           );
-          console.log("❌ Subscription canceled:", sub.id);
+
           break;
         }
 
         default:
-          console.log("⚠️ Unhandled event:", event.type);
+          break;
       }
 
-      res.sendStatus(200);
-    } catch (err) {
-      console.error("❌ Webhook processing error:", err);
-      res.sendStatus(500);
+      return res.sendStatus(200);
+    } catch (error) {
+      console.error("❌ Webhook error:", error);
+
+      return res.sendStatus(500);
     }
   },
 );
 
 // =========================================
-// HELPER: Upsert subscription into DB
-// lookupBy: "customer" | "subscription"
+// SYNC SUBSCRIPTION
 // =========================================
-async function upsertSubscription(sub, lookupBy) {
-  const trialEnd = sub.trial_end ?? null;
-  const periodEnd = sub.current_period_end ?? null;
 
-  // Grace period only applies AFTER a paid period — not during trial
-  // const gracePeriod =
-  //   sub.status === "trialing"
-  //     ? null
-  //     : periodEnd
-  //       ? new Date((periodEnd + 30 * 24 * 60 * 60) * 1000)
-  //       : null;
+async function syncSubscription(subscription) {
+  try {
+    const userId =
+      subscription.metadata?.userId ||
+      subscription.metadata?.userid ||
+      subscription.metadata?.user_id;
 
-  const gracePeriod =
-    sub.status === "past_due"
-      ? new Date((periodEnd + 30 * 24 * 60 * 60) * 1000)
-      : null;
+    console.log("USER ID:", userId);
 
-  console.log("💾 Writing to DB:", {
-    id: sub.id,
-    status: sub.status,
-    trialEnd: trialEnd ? new Date(trialEnd * 1000) : null,
-    periodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
-    gracePeriod,
-    lookupBy,
-  });
+    if (!userId) {
+      console.log("❌ Missing userId metadata");
 
-  if (lookupBy === "customer") {
-    const result = await pool.query(
+      return;
+    }
+
+    const activePriceIds = subscription.items.data.map((item) => item.price.id);
+
+    console.log("PRICE IDS:", activePriceIds);
+
+    let inventory_reports_access = false;
+
+    let inventory_view_access = false;
+
+    let drug_lookup_access = false;
+
+    let leads_access = false;
+
+    let full_access = false;
+
+    // FULL ACCESS
+    if (activePriceIds.includes(PRICE_MAP.full_access)) {
+      full_access = true;
+
+      inventory_reports_access = true;
+
+      inventory_view_access = true;
+
+      drug_lookup_access = true;
+
+      leads_access = true;
+    } else {
+      // BASE
+      if (activePriceIds.includes(PRICE_MAP.base)) {
+        inventory_reports_access = true;
+      }
+
+      // ADDONS REQUIRE BASE
+      if (inventory_reports_access) {
+        if (activePriceIds.includes(PRICE_MAP.inventory_view)) {
+          inventory_view_access = true;
+        }
+
+        if (activePriceIds.includes(PRICE_MAP.drug_lookup)) {
+          drug_lookup_access = true;
+        }
+
+        if (activePriceIds.includes(PRICE_MAP.leads)) {
+          leads_access = true;
+        }
+      }
+    }
+
+    let subscriptionType = "none";
+
+    if (full_access) {
+      subscriptionType = "full_access";
+    } else {
+      const types = [];
+
+      if (inventory_reports_access) {
+        types.push("base");
+      }
+
+      if (inventory_view_access) {
+        types.push("inventory_view");
+      }
+
+      if (drug_lookup_access) {
+        types.push("drug_lookup");
+      }
+
+      if (leads_access) {
+        types.push("leads");
+      }
+
+      subscriptionType = types.join("+");
+    }
+
+    console.log("SYNCING TO DATABASE...");
+
+    await pool.query(
       `
-      UPDATE subscriptions
-      SET
-        stripe_subscription_id = $1,
-        status                 = $2,
-        current_period_end     = to_timestamp($3),
-        trial_end              = to_timestamp($4),
-        grace_period_end       = $5
-      WHERE stripe_customer_id = $6 OR user_id = (SELECT user_id FROM subscriptions WHERE stripe_customer_id = $6 LIMIT 1)
-      RETURNING *
+      INSERT INTO subscriptions (
+        user_id,
+        stripe_customer_id,
+        stripe_subscription_id,
+        status,
+        current_period_end,
+        cancel_at_period_end,
+        subscription_type,
+
+        inventory_reports_access,
+        inventory_view_access,
+        drug_lookup_access,
+        leads_access,
+        full_access,
+
+        active_price_ids,
+         grace_period_end,
+
+        updated_at
+      )
+
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+
+        $5,
+
+        $6,
+        $7,
+
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+
+        $13,
+        NULL,
+
+        NOW()
+      )
+
+      ON CONFLICT (user_id)
+
+      DO UPDATE SET
+        stripe_customer_id = EXCLUDED.stripe_customer_id,
+
+        stripe_subscription_id =
+          EXCLUDED.stripe_subscription_id,
+
+        status = EXCLUDED.status,
+
+        current_period_end =
+          EXCLUDED.current_period_end,
+
+        cancel_at_period_end =
+          EXCLUDED.cancel_at_period_end,
+
+        subscription_type =
+          EXCLUDED.subscription_type,
+
+        inventory_reports_access =
+          EXCLUDED.inventory_reports_access,
+
+        inventory_view_access =
+          EXCLUDED.inventory_view_access,
+
+        drug_lookup_access =
+          EXCLUDED.drug_lookup_access,
+
+        leads_access =
+          EXCLUDED.leads_access,
+
+        full_access =
+          EXCLUDED.full_access,
+
+        active_price_ids =
+          EXCLUDED.active_price_ids,
+
+        grace_period_end = NULL,
+
+        updated_at = NOW()
       `,
-      [sub.id, sub.status, periodEnd, trialEnd, gracePeriod, sub.customer],
+      [
+        userId,
+        subscription.customer,
+        subscription.id,
+        subscription.status,
+        subscription.current_period_end
+          ? new Date(subscription.current_period_end * 1000)
+          : null,
+        subscription.cancel_at_period_end,
+        subscriptionType,
+
+        inventory_reports_access,
+        inventory_view_access,
+        drug_lookup_access,
+        leads_access,
+        full_access,
+
+        activePriceIds,
+      ],
     );
-    console.log("💾 DB UPDATE RESULT (by customer):", result.rows);
-  } else {
-    const result = await pool.query(
-      `
-      UPDATE subscriptions
-      SET
-        status             = $1,
-        current_period_end = to_timestamp($2),
-        trial_end          = to_timestamp($3),
-        grace_period_end   = $4
-      WHERE stripe_subscription_id = $5
-      RETURNING *
-      `,
-      [sub.status, periodEnd, trialEnd, gracePeriod, sub.id],
-    );
-    console.log("💾 DB UPDATE RESULT (by sub id):", result.rows);
+
+    console.log("✅ Subscription synced to PostgreSQL");
+  } catch (error) {
+    console.error("❌ syncSubscription FULL ERROR:", error);
+
+    if (error?.detail) {
+      console.error("DETAIL:", error.detail);
+    }
+
+    if (error?.constraint) {
+      console.error("CONSTRAINT:", error.constraint);
+    }
   }
 }
 

@@ -17,15 +17,18 @@ const FRONT_TO_DB = {
   primaryInsuranceGroup: "primary_group",
   primaryInsurancePaid: "primary_paid",
   secondaryInsuranceBinNumber: "secondary_bin",
+  secondaryInsurancePcn: "secondary_pcn",
+  secondaryInsuranceGroup: "secondary_group",
   secondaryInsurancePaid: "secondary_paid",
   brand: "brand",
+  patientCopay: "patient_copay",
 };
 
 export async function normalizeInventoryCSV(inputPath, headerMapping) {
   return new Promise((resolve, reject) => {
     const outputPath = path.join(
       path.dirname(inputPath),
-      path.basename(inputPath, path.extname(inputPath)) + ".normalized.csv"
+      path.basename(inputPath, path.extname(inputPath)) + ".normalized.csv",
     );
 
     const rows = [];
@@ -57,19 +60,20 @@ export async function normalizeInventoryCSV(inputPath, headerMapping) {
           // Find the actual CSV column that matches the standardValue
           // standardValue is something like "rx_number", "date_filled", etc.
           // We need to find the actual CSV header that the user selected
-          
+
           // The user selected a column from their file headers in the dropdown
           // standardValue IS the actual column name from their CSV
           // because in UploadInventoryStep, the select options are the actual file headers
-          
+
           const actualColValue = row[standardValue];
-          
+
           if (actualColValue !== undefined) {
             dbRow[dbKey] = actualColValue || null;
           } else {
             // Try case-insensitive match
             const matchingKey = Object.keys(row).find(
-              (k) => k.toLowerCase().trim() === standardValue.toLowerCase().trim()
+              (k) =>
+                k.toLowerCase().trim() === standardValue.toLowerCase().trim(),
             );
             dbRow[dbKey] = matchingKey ? row[matchingKey] || null : null;
           }

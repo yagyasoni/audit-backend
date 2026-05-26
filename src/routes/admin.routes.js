@@ -822,4 +822,120 @@ router.get("/payer-type-options", async (req, res) => {
   }
 });
 
+// ──────────────────────────────────────────────────────────────
+// GET /api/ndc-sheet
+// Returns all unique NDCs with their drug_name, sorted by drug_name.
+// NDC is the primary key here — one row per NDC.
+// If two different drug names share an NDC (shouldn't happen in
+// practice), the most recently seen drug_name wins via DISTINCT ON.
+// ──────────────────────────────────────────────────────────────
+router.get("/ndc-sheet", async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        id,
+        ndc,
+        drug_name,
+        status,
+        created_at,
+        updated_at
+      FROM ndc_sheet
+      ORDER BY created_at DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("NDC fetch error:", err);
+
+    res.status(500).json({
+      error: "Failed to fetch NDC sheet",
+    });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// PUT /api/ndc-sheet/:ndc
+// Updates drug_name for every inventory_rows row that has
+// the given NDC (keeps data consistent across all audits).
+// Body: { drug_name: string }
+// ──────────────────────────────────────────────────────────────
+router.put("/ndc-sheet/:id", async (req, res) => {
+  const { id } = req.params;
+
+  const { drug_name, status } = req.body;
+
+  try {
+    // validation
+    if (status && !["pending", "reviewed"].includes(status)) {
+      return res.status(400).json({
+        error: "Invalid status",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE ndc_sheet
+      SET
+        drug_name = COALESCE($1, drug_name),
+        status = COALESCE($2, status),
+        updated_at = NOW()
+      WHERE id = $3
+      RETURNING *
+      `,
+      [drug_name?.trim(), status, id],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "NDC entry not found",
+      });
+    }
+
+    res.json({
+      message: "NDC updated successfully",
+      data: result.rows[0],
+    });
+  } catch (err) {
+    console.error("NDC update error:", err);
+
+    res.status(500).json({
+      error: "Failed to update NDC",
+    });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// GET /api/ndc-sheet/search?q=term
+// Quick search by NDC or drug_name (for autocomplete / filter)
+// ──────────────────────────────────────────────────────────────
+router.delete("/ndc-sheet/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM ndc_sheet
+      WHERE id = $1
+      `,
+      [id],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        error: "Entry not found",
+      });
+    }
+
+    res.json({
+      message: "Deleted successfully",
+    });
+  } catch (err) {
+    console.error("Delete error:", err);
+
+    res.status(500).json({
+      error: "Failed to delete",
+    });
+  }
+});
+
 export default router;

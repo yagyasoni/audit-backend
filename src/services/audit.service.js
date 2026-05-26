@@ -42,8 +42,11 @@ const FRONT_TO_DB_KEY = {
   primaryInsuranceBinNumber: "primary_bin",
   primaryInsurancePaid: "primary_paid",
   secondaryInsuranceBinNumber: "secondary_bin",
+  secondaryInsurancePcn: "secondary_pcn",
+  secondaryInsuranceGroup: "secondary_group",
   secondaryInsurancePaid: "secondary_paid",
   brand: "brand",
+  patientCopay: "patient_copay",
 };
 
 // ── Auto-refresh audit status based on uploaded files ──────────────────────
@@ -92,67 +95,57 @@ const cleanInt = (v) => {
   return n === null ? null : Math.trunc(n);
 };
 
-// const cleanDate = (v) => {
-//   if (!v) return null;
-//   const s = String(v)
-//     .trim()
-//     .replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
-
-//   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-//   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-//   if (m) {
-//     const mm = String(m[1]).padStart(2, "0");
-//     const dd = String(m[2]).padStart(2, "0");
-//     const yy = m[3];
-//     return `${yy}-${mm}-${dd}`;
-//   }
-
-//   return null;
-// };
-
 const cleanDate = (v) => {
-  // if (v === null || v === undefined || v === "") return null;
-  // const s = String(v).trim();
   if (v === null || v === undefined || v === "") return null;
   let s = String(v).trim();
   if (!s) return null;
 
-  // Strip trailing time like " 0:00", " 12:30:00", " 3:45 PM"
-  s = s.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i, "");
+  // ── Strip trailing time component, ALL common variants ──
+  //   "3/15/2025 10:30"
+  //   "3/15/2025 10:30:00"
+  //   "3/15/2025 10:30 AM"
+  //   "3/15/2025 10:30:00 PM"
+  //   "3/15/2025 0:00"
+  //   "2025-03-15T10:30:00.000Z"
+  //   "2025-03-15 10:30:00"
+  s = s
+    .replace(/[T\s]+\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(Z|[AP]M)?$/i, "")
+    .trim();
 
-  // ISO format YYYY-MM-DD (with or without time)
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // ── ISO YYYY-MM-DD ──
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  // M/D/YYYY or MM/DD/YYYY
+  // ── M/D/YYYY or MM/DD/YYYY ──
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
-    const mm = String(m[1]).padStart(2, "0");
-    const dd = String(m[2]).padStart(2, "0");
-    return `${m[3]}-${mm}-${dd}`;
+    return `${m[3]}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
   }
 
-  // M/D/YY — 2-digit year
+  // ── M/D/YY (2-digit year) ──
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
   if (m) {
-    const mm = String(m[1]).padStart(2, "0");
-    const dd = String(m[2]).padStart(2, "0");
     const yy = parseInt(m[3], 10);
     const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
-    return `${yyyy}-${mm}-${dd}`;
+    return `${yyyy}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
   }
 
-  // M-D-YYYY or MM-DD-YYYY
+  // ── M-D-YYYY or MM-DD-YYYY ──
   m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (m) {
-    const mm = String(m[1]).padStart(2, "0");
-    const dd = String(m[2]).padStart(2, "0");
-    return `${m[3]}-${mm}-${dd}`;
+    return `${m[3]}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
   }
 
-  // Excel serial number (pure digits, sane range: ~1927–2119)
-  if (/^\d+$/.test(s)) {
-    const serial = parseInt(s, 10);
+  // ── M-D-YY (2-digit year, dash separator) ──
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+  if (m) {
+    const yy = parseInt(m[3], 10);
+    const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
+    return `${yyyy}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
+  }
+
+  // ── Excel serial number ──
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
     if (serial >= 10000 && serial <= 80000) {
       const utcMs = (serial - 25569) * 86400 * 1000;
       const d = new Date(utcMs);
@@ -163,10 +156,22 @@ const cleanDate = (v) => {
         return `${yyyy}-${mm}-${dd}`;
       }
     }
-    // Pure digits but out of Excel-serial range — reject, don't treat as year
     return null;
   }
 
+  // ── Last-resort fallback: let JS try to parse it ──
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    if (yyyy >= 1900 && yyyy <= 2100) {
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+
+  // ── Log what we rejected so we can see future problem formats ──
+  console.warn("cleanDate rejected value:", JSON.stringify(v));
   return null;
 };
 
@@ -322,26 +327,241 @@ export const saveInventoryFile = async (
 };
 
 // ── BULK INSERT with chunking (max 1000 rows per query to stay under 65,535 param limit) ──
+// export const insertInventoryRows = async (auditId, rows) => {
+//   if (!rows.length) return { inserted: 0 };
+
+//   const client = await pool.connect();
+//   const CHUNK_SIZE = 1000; // 1000 rows × 15 cols = 15,000 params — safe
+
+//   try {
+//     await client.query("BEGIN");
+
+//     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+//       const chunk = rows.slice(i, i + CHUNK_SIZE);
+//       const values = [];
+
+//       const placeholders = chunk.map((r, idx) => {
+//         const base = idx * 15;
+//         values.push(
+//           auditId,
+//           r.ndc || null,
+//           r.rx_number || null,
+//           r.status || null,
+//           cleanDate(r.date_filled),
+//           r.drug_name || null,
+//           r.quantity ? parseInt(r.quantity) : null,
+//           r.package_size || null,
+//           r.primary_bin || null,
+//           r.primary_pcn || null,
+//           r.primary_group || null,
+//           r.primary_paid ? parseFloat(r.primary_paid) : null,
+//           r.secondary_bin || null,
+//           r.secondary_paid ? parseFloat(r.secondary_paid) : null,
+//           r.brand || null,
+//         );
+//         return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15})`;
+//       });
+
+//       await client.query(
+//         `INSERT INTO inventory_rows
+//          (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
+//           primary_bin, primary_pcn, primary_group, primary_paid, secondary_bin, secondary_paid, brand)
+//          VALUES ${placeholders.join(",")}`,
+//         values,
+//       );
+
+//       console.log(
+//         `✅ Chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(rows.length / CHUNK_SIZE)} inserted`,
+//       );
+//     }
+
+//     const queueInsertResult = await client.query(
+//       `
+//   INSERT INTO master_sheet_queue (bin, pcn, grp)
+//   SELECT DISTINCT
+//     LPAD(TRIM(i.primary_bin), 6, '0'),
+//     LOWER(TRIM(i.primary_pcn)),
+//     LOWER(TRIM(i.primary_group))
+
+//   FROM inventory_rows i
+
+//   LEFT JOIN master_sheet m
+//     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
+//    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(m.pcn)), '')
+//    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(m.grp)), '')
+
+//   LEFT JOIN master_sheet_queue q
+//     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
+//    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(q.pcn)), '')
+//    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(q.grp)), '')
+
+//   WHERE i.audit_id = $1
+//     AND m.id IS NULL
+//     AND q.id IS NULL
+//     AND i.primary_bin IS NOT NULL
+
+//   ON CONFLICT DO NOTHING
+
+//   RETURNING bin, pcn, grp
+// `,
+//       [auditId],
+//     );
+
+//     const newQueueRows = queueInsertResult.rows;
+
+//     if (newQueueRows.length > 0) {
+//       // 🔥 SEND ONE EMAIL (summary)
+//       resend.emails
+//         .send({
+//           from: process.env.EMAIL_FROM,
+//           to: "drugdroprx@gmail.com",
+//           subject: "New Queue Items Detected",
+//           html: `
+//       <div style="font-family: Arial; padding:20px;">
+//         <h2>New Queue Items Added</h2>
+//         <p><b>Total New Items:</b> ${newQueueRows.length}</p>
+
+//         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+//           <tr>
+//             <th>BIN</th>
+//             <th>PCN</th>
+//             <th>GRP</th>
+//           </tr>
+
+//           ${newQueueRows
+//             .slice(0, 10) // limit preview
+//             .map(
+//               (r) => `
+//               <tr>
+//                 <td>${r.bin}</td>
+//                 <td>${r.pcn || "-"}</td>
+//                 <td>${r.grp || "-"}</td>
+//               </tr>
+//             `,
+//             )
+//             .join("")}
+//         </table>
+
+//         ${
+//           newQueueRows.length > 10
+//             ? `<p>...and ${newQueueRows.length - 10} more</p>`
+//             : ""
+//         }
+//       </div>
+//     `,
+//         })
+//         .catch(console.error);
+//     }
+
+//     await client.query("COMMIT");
+
+//     console.log(`✅ All ${rows.length} inventory rows inserted`);
+//     return { inserted: rows.length };
+//   } catch (err) {
+//     await client.query("ROLLBACK");
+//     throw err;
+//   } finally {
+//     client.release();
+//   }
+// };
+
 export const insertInventoryRows = async (auditId, rows) => {
   if (!rows.length) return { inserted: 0 };
 
   const client = await pool.connect();
-  const CHUNK_SIZE = 1000; // 1000 rows × 15 cols = 15,000 params — safe
+  const CHUNK_SIZE = 1000; // 1000 rows × 18 cols = 18,000 params — safe
 
   try {
     await client.query("BEGIN");
+
+    // =========================================
+    // NDC SHEET SYNC
+    // =========================================
+
+    const uniqueNdcMap = new Map();
+
+    for (const row of rows) {
+      const ndc = row.ndc?.trim();
+
+      if (!ndc) {
+        continue;
+      }
+
+      // avoid duplicates in same upload
+      if (!uniqueNdcMap.has(ndc)) {
+        uniqueNdcMap.set(ndc, {
+          ndc,
+          drug_name: row.drug_name?.trim() || "Unknown Drug",
+        });
+      }
+    }
+
+    // =========================================
+    // CHECK EXISTING INVENTORY
+    // =========================================
+
+    for (const [ndc, value] of uniqueNdcMap.entries()) {
+      // already exists in ndc_sheet?
+      const existingNdcSheet = await client.query(
+        `
+      SELECT id
+      FROM ndc_sheet
+      WHERE ndc = $1
+      `,
+        [ndc],
+      );
+
+      // already managed
+      if (existingNdcSheet.rowCount > 0) {
+        continue;
+      }
+
+      // existed historically?
+      const existingInventory = await client.query(
+        `
+      SELECT id
+      FROM inventory_rows
+      WHERE ndc = $1
+      LIMIT 1
+      `,
+        [ndc],
+      );
+
+      // =====================================
+      // STATUS LOGIC
+      // =====================================
+
+      const status = existingInventory.rowCount > 0 ? "reviewed" : "pending";
+
+      // =====================================
+      // INSERT INTO NDC SHEET
+      // =====================================
+
+      await client.query(
+        `
+    INSERT INTO ndc_sheet (
+      ndc,
+      drug_name,
+      status
+    )
+    VALUES ($1, $2, $3)
+    `,
+        [ndc, value.drug_name, status],
+      );
+    }
 
     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
       const values = [];
 
       const placeholders = chunk.map((r, idx) => {
-        const base = idx * 15;
+        const base = idx * 18;
         values.push(
           auditId,
           r.ndc || null,
           r.rx_number || null,
           r.status || null,
+          // r.date_filled || null,
           cleanDate(r.date_filled),
           r.drug_name || null,
           r.quantity ? parseInt(r.quantity) : null,
@@ -351,16 +571,20 @@ export const insertInventoryRows = async (auditId, rows) => {
           r.primary_group || null,
           r.primary_paid ? parseFloat(r.primary_paid) : null,
           r.secondary_bin || null,
+          r.secondary_pcn || null,
+          r.secondary_group || null,
           r.secondary_paid ? parseFloat(r.secondary_paid) : null,
           r.brand || null,
+          r.patient_copay ? parseFloat(r.patient_copay) : null,
         );
-        return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15})`;
+        return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18})`;
       });
 
       await client.query(
         `INSERT INTO inventory_rows
          (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
-          primary_bin, primary_pcn, primary_group, primary_paid, secondary_bin, secondary_paid, brand)
+          primary_bin, primary_pcn, primary_group, primary_paid,
+          secondary_bin, secondary_pcn, secondary_group, secondary_paid, brand, patient_copay)
          VALUES ${placeholders.join(",")}`,
         values,
       );
@@ -369,36 +593,6 @@ export const insertInventoryRows = async (auditId, rows) => {
         `✅ Chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(rows.length / CHUNK_SIZE)} inserted`,
       );
     }
-
-    //     const queueInsertResult = await client.query(
-    //       `
-    //   INSERT INTO master_sheet_queue (bin, pcn, grp)
-    //   SELECT DISTINCT
-    //     LPAD(TRIM(i.primary_bin), 6, '0'),
-    //     LOWER(TRIM(i.primary_pcn)),
-    //     LOWER(TRIM(i.primary_group))
-
-    //   FROM inventory_rows i
-
-    //   LEFT JOIN master_sheet m
-    //     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
-    //    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(m.pcn)), '')
-    //    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(m.grp)), '')
-
-    //   LEFT JOIN master_sheet_queue q
-    //     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
-    //    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(q.pcn)), '')
-    //    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(q.grp)), '')
-
-    //   WHERE i.audit_id = $1
-    //     AND m.id IS NULL
-    //     AND q.id IS NULL
-    //     AND i.primary_bin IS NOT NULL
-
-    //   ON CONFLICT DO NOTHING
-    // `,
-    //       [auditId],
-    //     );
 
     const queueInsertResult = await client.query(
       `
@@ -479,7 +673,6 @@ export const insertInventoryRows = async (auditId, rows) => {
     }
 
     await client.query("COMMIT");
-
     console.log(`✅ All ${rows.length} inventory rows inserted`);
     return { inserted: rows.length };
   } catch (err) {
@@ -746,6 +939,7 @@ export const getInventoryRows = async (auditId) => {
     "secondary_bin",
     "secondary_paid",
     "brand",
+    "patient_copay",
   ];
 
   const normalized = rows.map((row) => {
@@ -1192,9 +1386,11 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
 
   // ── Primary filter: NDC OR ingredient ──
   if (ndc && String(ndc).trim()) {
-    const digits = String(ndc).replace(/\D/g, "");
+    // const digits = String(ndc).replace(/\D/g, "");
+    const digits = String(ndc).replace(/\D/g, "").padStart(11, "0");
+
     conditions.push(
-      `RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10) = RIGHT(LPAD($${pIdx}, 11, '0'), 10)`,
+      `LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD($${pIdx}, 11, '0')`,
     );
     params.push(digits);
     pIdx++;
@@ -1264,7 +1460,7 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
     `
     SELECT
       ${CLEAN_DRUG}                                              AS drug_name,
-      RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10) AS ndc,
+      LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc,
       MAX(brand)                                                 AS brand,
       COUNT(DISTINCT (a.user_id,rx_number,date_filled))          AS rx_count,
       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
@@ -1275,7 +1471,7 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
     FROM inventory_rows
     INNER JOIN audits a ON a.id = inventory_rows.audit_id
     WHERE ${whereClause}
-    GROUP BY ${CLEAN_DRUG}, RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
+    GROUP BY ${CLEAN_DRUG}, LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0')
     ORDER BY ${CLEAN_DRUG}, rx_count DESC
     `,
     params,
