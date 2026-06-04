@@ -8,6 +8,9 @@ import paymentRoutes from "./routes/payment.routes.js";
 import webhookRoutes from "./config/webhook.js";
 import inventoryViewRoutes from "./routes/inventoryView.routes.js";
 import publishingRoutes from "./routes/publishing.routes.js";
+import ndcSheetRoutes from "./routes/ndcSheet.routes.js";
+import landingRoutes from "./routes/landing.routes.js";
+import auditGroupRoutes from "./routes/auditGroup.routes.js";
 
 const app = express();
 
@@ -33,5 +36,8 @@ app.use("/api", supplierRoutes);
 app.use("/pay", paymentRoutes);
 app.use("/api/inventory-view", inventoryViewRoutes);
 app.use("/post", publishingRoutes);
+app.use("/api", ndcSheetRoutes);
+app.use("/landing", landingRoutes);
+app.use("/audit-groups", auditGroupRoutes);
 
 export default app;

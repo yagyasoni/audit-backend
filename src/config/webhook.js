@@ -364,7 +364,12 @@ async function syncSubscription(subscription) {
         active_price_ids =
           EXCLUDED.active_price_ids,
 
-        grace_period_end = NULL,
+        grace_period_end =
+  CASE
+    WHEN EXCLUDED.cancel_at_period_end = false
+    THEN NULL
+    ELSE subscriptions.grace_period_end
+  END,
 
         updated_at = NOW()
       `,
@@ -373,9 +378,13 @@ async function syncSubscription(subscription) {
         subscription.customer,
         subscription.id,
         subscription.status,
-        subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000)
-          : null,
+        (() => {
+          const currentPeriodEnd =
+            subscription.current_period_end ||
+            subscription.items?.data?.[0]?.current_period_end;
+
+          return currentPeriodEnd ? new Date(currentPeriodEnd * 1000) : null;
+        })(),
         subscription.cancel_at_period_end,
         subscriptionType,
 

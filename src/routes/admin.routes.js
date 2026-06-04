@@ -623,7 +623,7 @@ router.post("/feedbacks", async (req, res) => {
     resend.emails
       .send({
         from: process.env.EMAIL_FROM,
-        to: "drugdroprx@gmail.com",
+        to: "auditprorx@gmail.com",
         subject: "New Feedback Received",
         html: feedbackEmailTemplate(feedback),
       })

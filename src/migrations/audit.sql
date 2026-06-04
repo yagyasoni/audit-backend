@@ -223,17 +223,6 @@ CREATE TABLE feedbacks (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- CREATE TABLE subscriptions (
---   id SERIAL PRIMARY KEY,
---   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
---   stripe_customer_id TEXT,
---   stripe_subscription_id TEXT,
---   status TEXT, -- trialing, active, past_due, canceled
---   current_period_end TIMESTAMP,
---   trial_end TIMESTAMP,
---   grace_period_end TIMESTAMP,
---   created_at TIMESTAMP DEFAULT NOW()
--- );
 
 CREATE TABLE preserved_inventory_rx (
     id BIGSERIAL PRIMARY KEY,
@@ -1766,3 +1755,82 @@ CREATE TABLE IF NOT EXISTS ndc_sheet (
 
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS audit_share_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    name TEXT NOT NULL,
+
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_share_groups_created_by
+ON audit_share_groups(created_by);
+
+
+
+CREATE TABLE IF NOT EXISTS audit_share_group_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    group_id UUID NOT NULL
+    REFERENCES audit_share_groups(id)
+    ON DELETE CASCADE,
+
+    user_id UUID NOT NULL
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+    role TEXT DEFAULT 'member'
+    CHECK(role IN ('admin', 'member')),
+
+    joined_at TIMESTAMP DEFAULT NOW(),
+
+    UNIQUE(group_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_share_group_users_group
+ON audit_share_group_users(group_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_share_group_users_user
+ON audit_share_group_users(user_id);
+
+
+CREATE TABLE IF NOT EXISTS audit_share_group_invites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    group_id UUID NOT NULL
+    REFERENCES audit_share_groups(id)
+    ON DELETE CASCADE,
+
+    invited_by UUID
+    REFERENCES users(id)
+    ON DELETE SET NULL,
+
+    invited_user_id UUID
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+    email TEXT NOT NULL,
+
+    status TEXT DEFAULT 'pending'
+    CHECK(status IN ('pending', 'accepted', 'declined')),
+
+    created_at TIMESTAMP DEFAULT NOW(),
+
+    accepted_at TIMESTAMP,
+
+    UNIQUE(group_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_share_group_invites_group
+ON audit_share_group_invites(group_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_share_group_invites_email
+ON audit_share_group_invites(email);
+

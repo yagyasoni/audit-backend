@@ -2860,3 +2860,305 @@ export const searchPharmacies = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+// ============================================================================
+// GROUP REPORTS — a pharmacy copies its report (NDC / drug / pkg size /
+// highest shortage) into a group. Each "add" creates a new report + rows.
+// ============================================================================
+
+// Bulk-insert a pharmacy's drug rows for a report, tagged with that pharmacy.
+const insertReportRows = async (reportId, pharmacyId, pharmacyName, rows) => {
+  const values = [];
+  const params = [];
+  let p = 1;
+  rows.forEach((r, i) => {
+    values.push(
+      `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`,
+    );
+    params.push(
+      reportId,
+      r.ndc ?? null,
+      r.drug_name ?? null,
+      r.package_size ?? null,
+      r.highest_shortage ?? null,
+      r.rank ?? null,
+      i,
+      pharmacyId,
+      pharmacyName,
+    );
+  });
+  await pool.query(
+    `INSERT INTO inventory_group_report_rows
+      (report_id, ndc, drug_name, package_size, highest_shortage, rank, sort_order, pharmacy_id, pharmacy_name)
+     VALUES ${values.join(", ")}`,
+    params,
+  );
+};
+
+// POST /groups/:id/reports — create a shared report + add the creator's column
+export const addGroupReport = async (req, res) => {
+  try {
+    const userId = requireUser(req);
+    const pharmacyId = await getUserPharmacyId(userId);
+    if (!pharmacyId)
+      return res
+        .status(400)
+        .json({ error: "No pharmacy registered for this user" });
+
+    const { id: groupId } = req.params;
+
+    const memCheck = await pool.query(
+      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+      [groupId, pharmacyId],
+    );
+    if (memCheck.rows.length === 0)
+      return res.status(403).json({ error: "Not a member of this group" });
+
+    const { source_audit_id = null, label = null, rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0)
+      return res.status(400).json({ error: "No rows to add" });
+
+    // Server owns the pharmacy name → becomes the shortage column header
+    const pnRes = await pool.query(
+      `SELECT pharmacy_name FROM pharmacy_details WHERE id = $1`,
+      [pharmacyId],
+    );
+    const pharmacyName = pnRes.rows[0]?.pharmacy_name || "Pharmacy";
+
+    const repRes = await pool.query(
+      `INSERT INTO inventory_group_reports
+        (group_id, pharmacy_id, user_id, pharmacy_name, source_audit_id, label, row_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        groupId,
+        pharmacyId,
+        userId,
+        pharmacyName,
+        source_audit_id,
+        label,
+        rows.length,
+      ],
+    );
+    const report = repRes.rows[0];
+
+    // Bulk insert the rows tagged with the creator pharmacy (first contributor)
+    await insertReportRows(report.id, pharmacyId, pharmacyName, rows);
+
+    return res.status(201).json(report);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("addGroupReport error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /groups/:id/reports/:reportId/contribute — add THIS pharmacy's column to
+// an existing shared report. One contribution per pharmacy per report.
+export const contributeGroupReport = async (req, res) => {
+  try {
+    const userId = requireUser(req);
+    const pharmacyId = await getUserPharmacyId(userId);
+    if (!pharmacyId)
+      return res
+        .status(400)
+        .json({ error: "No pharmacy registered for this user" });
+
+    const { id: groupId, reportId } = req.params;
+
+    const memCheck = await pool.query(
+      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+      [groupId, pharmacyId],
+    );
+    if (memCheck.rows.length === 0)
+      return res.status(403).json({ error: "Not a member of this group" });
+
+    const repCheck = await pool.query(
+      `SELECT 1 FROM inventory_group_reports WHERE id = $1 AND group_id = $2`,
+      [reportId, groupId],
+    );
+    if (repCheck.rows.length === 0)
+      return res.status(404).json({ error: "Report not found" });
+
+    // One contribution per pharmacy
+    const already = await pool.query(
+      `SELECT 1 FROM inventory_group_report_rows
+       WHERE report_id = $1 AND pharmacy_id = $2 LIMIT 1`,
+      [reportId, pharmacyId],
+    );
+    if (already.rows.length > 0)
+      return res
+        .status(409)
+        .json({ error: "You already added your data to this report" });
+
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0)
+      return res.status(400).json({ error: "No rows to add" });
+
+    const pnRes = await pool.query(
+      `SELECT pharmacy_name FROM pharmacy_details WHERE id = $1`,
+      [pharmacyId],
+    );
+    const pharmacyName = pnRes.rows[0]?.pharmacy_name || "Pharmacy";
+
+    await insertReportRows(reportId, pharmacyId, pharmacyName, rows);
+
+    return res.status(201).json({ ok: true });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("contributeGroupReport error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /groups/:id/reports — list shared reports with contributor count + whether
+// the current pharmacy has already added its column.
+export const getGroupReports = async (req, res) => {
+  try {
+    const userId = requireUser(req);
+    const pharmacyId = await getUserPharmacyId(userId);
+    const { id: groupId } = req.params;
+
+    const memCheck = await pool.query(
+      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+      [groupId, pharmacyId],
+    );
+    if (memCheck.rows.length === 0)
+      return res.status(403).json({ error: "Not a member of this group" });
+
+    const result = await pool.query(
+      `SELECT r.id, r.pharmacy_name, r.source_audit_id, r.label, r.created_at,
+         (SELECT COUNT(DISTINCT rr.pharmacy_id)
+            FROM inventory_group_report_rows rr
+            WHERE rr.report_id = r.id) AS contributor_count,
+         EXISTS(SELECT 1 FROM inventory_group_report_rows rr
+            WHERE rr.report_id = r.id AND rr.pharmacy_id = $2) AS has_contributed
+       FROM inventory_group_reports r
+       WHERE r.group_id = $1
+       ORDER BY r.created_at DESC`,
+      [groupId, pharmacyId],
+    );
+
+    const reports = result.rows.map((r) => ({
+      ...r,
+      contributor_count: Number(r.contributor_count) || 0,
+    }));
+
+    return res.json(reports);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("getGroupReports error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /groups/:id/reports/:reportId — report pivoted into one column per pharmacy
+export const getGroupReportDetail = async (req, res) => {
+  try {
+    const userId = requireUser(req);
+    const pharmacyId = await getUserPharmacyId(userId);
+    const { id: groupId, reportId } = req.params;
+
+    const memCheck = await pool.query(
+      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+      [groupId, pharmacyId],
+    );
+    if (memCheck.rows.length === 0)
+      return res.status(403).json({ error: "Not a member of this group" });
+
+    const repRes = await pool.query(
+      `SELECT id, pharmacy_id, pharmacy_name, source_audit_id, label, created_at
+       FROM inventory_group_reports
+       WHERE id = $1 AND group_id = $2`,
+      [reportId, groupId],
+    );
+    if (repRes.rows.length === 0)
+      return res.status(404).json({ error: "Report not found" });
+
+    // Creator's column first, then other pharmacies (alphabetical), each in its
+    // own drug order — so columns are deterministic and creator leads.
+    const creatorPharmacyId = repRes.rows[0].pharmacy_id;
+    const rowsRes = await pool.query(
+      `SELECT ndc, drug_name, package_size, highest_shortage, rank,
+              pharmacy_name, sort_order
+       FROM inventory_group_report_rows
+       WHERE report_id = $1
+       ORDER BY (pharmacy_id = $2) DESC, pharmacy_name, sort_order`,
+      [reportId, creatorPharmacyId],
+    );
+
+    // Pivot: union drugs by NDC, one value column per contributor pharmacy.
+    const pharmacies = [];
+    const byNdc = new Map();
+    for (const r of rowsRes.rows) {
+      const name = r.pharmacy_name || "Pharmacy";
+      if (!pharmacies.includes(name)) pharmacies.push(name);
+      const key = r.ndc ?? "";
+      if (!byNdc.has(key)) {
+        byNdc.set(key, {
+          ndc: r.ndc,
+          drug_name: r.drug_name,
+          package_size: r.package_size,
+          rank: r.rank,
+          values: {},
+        });
+      }
+      const row = byNdc.get(key);
+      // First contributor wins for display fields
+      if (row.drug_name == null) row.drug_name = r.drug_name;
+      if (row.package_size == null) row.package_size = r.package_size;
+      if (row.rank == null) row.rank = r.rank;
+      row.values[name] = r.highest_shortage;
+    }
+
+    // Matching rule: with 2+ pharmacies show only NDCs every pharmacy has
+    // (intersection). With a single contributor, show all its drugs.
+    let rows = Array.from(byNdc.values());
+    if (pharmacies.length > 1) {
+      rows = rows.filter((row) =>
+        pharmacies.every((ph) =>
+          Object.prototype.hasOwnProperty.call(row.values, ph),
+        ),
+      );
+    }
+
+    return res.json({ report: repRes.rows[0], pharmacies, rows });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("getGroupReportDetail error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /groups/:id/reports/:reportId — owner or group admin only
+export const deleteGroupReport = async (req, res) => {
+  try {
+    const userId = requireUser(req);
+    const { id: groupId, reportId } = req.params;
+
+    const check = await pool.query(
+      `SELECT r.id
+       FROM inventory_group_reports r
+       JOIN inventory_groups g ON g.id = r.group_id
+       WHERE r.id = $1 AND r.group_id = $2
+         AND (r.user_id = $3 OR g.created_by_user_id = $3)`,
+      [reportId, groupId, userId],
+    );
+    if (check.rows.length === 0)
+      return res
+        .status(403)
+        .json({
+          error: "Only the report owner or group admin can delete this report",
+        });
+
+    await pool.query(`DELETE FROM inventory_group_reports WHERE id = $1`, [
+      reportId,
+    ]);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("deleteGroupReport error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};

@@ -100,6 +100,12 @@ import {
   declineInvitation,
   // Pharmacy search
   searchPharmacies,
+  // Group reports
+  addGroupReport,
+  contributeGroupReport,
+  getGroupReports,
+  getGroupReportDetail,
+  deleteGroupReport,
 } from "../controllers/inventoryView.controller.js";
 
 const router = express.Router();
@@ -135,6 +141,13 @@ router.post("/groups/:id/request-join", requestJoinGroup); // NEW
 router.post("/groups/:id/invite-code", generateGroupInviteCode);
 router.post("/groups/:id/leave", leaveGroup);
 router.delete("/groups/:id/members/:memberPharmacyId", removeGroupMember);
+
+// ── Group reports (per-pharmacy report copied into a group) ─────────────────
+router.get("/groups/:id/reports", getGroupReports);
+router.post("/groups/:id/reports", addGroupReport);
+router.post("/groups/:id/reports/:reportId/contribute", contributeGroupReport);
+router.get("/groups/:id/reports/:reportId", getGroupReportDetail);
+router.delete("/groups/:id/reports/:reportId", deleteGroupReport);
 
 // ── Invitations inbox ───────────────────────────────────────
 router.get("/invitations", getMyInvitations);

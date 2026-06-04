@@ -145,9 +145,9 @@ router.post("/create-checkout-session", async (req, res) => {
 
       line_items: lineItems,
 
-      success_url: "http://localhost:3000/Mainpage?payment=success",
+      success_url: "https://www.auditprorx.com/Mainpage?payment=success",
 
-      cancel_url: "http://localhost:3000/cancel",
+      cancel_url: "https://www.auditprorx.com/cancel",
     });
 
     return res.json({
@@ -389,7 +389,7 @@ router.post("/update-subscription", async (req, res) => {
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
 
-      return_url: "http://localhost:3000/settings",
+      return_url: "https://www.auditprorx.com/settings",
     });
 
     return res.json({
@@ -636,6 +636,16 @@ router.get("/stripe-subscription/:userId", async (req, res) => {
     // RESPONSE
     // =====================================
 
+    const currentPeriodEnd =
+      subscription.current_period_end ||
+      subscription.items?.data?.[0]?.current_period_end ||
+      null;
+
+    const currentPeriodStart =
+      subscription.current_period_start ||
+      subscription.items?.data?.[0]?.current_period_start ||
+      null;
+
     return res.json({
       subscription: {
         id: subscription.id,
@@ -644,12 +654,20 @@ router.get("/stripe-subscription/:userId", async (req, res) => {
 
         cancel_at_period_end: subscription.cancel_at_period_end,
 
-        current_period_end: subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000)
+        // current_period_end: subscription.current_period_end
+        //   ? new Date(subscription.current_period_end * 1000)
+        //   : null,
+
+        // current_period_start: subscription.current_period_start
+        //   ? new Date(subscription.current_period_start * 1000)
+        //   : null,
+
+        current_period_end: currentPeriodEnd
+          ? new Date(currentPeriodEnd * 1000)
           : null,
 
-        current_period_start: subscription.current_period_start
-          ? new Date(subscription.current_period_start * 1000)
+        current_period_start: currentPeriodStart
+          ? new Date(currentPeriodStart * 1000)
           : null,
 
         customer: subscription.customer,
