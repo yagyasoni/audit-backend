@@ -1834,3 +1834,56 @@ ON audit_share_group_invites(group_id);
 CREATE INDEX IF NOT EXISTS idx_audit_share_group_invites_email
 ON audit_share_group_invites(email);
 
+
+
+-- ============================================================================
+-- Inventory Group — Per-pharmacy reports inside a group
+-- A pharmacy copies its report's (NDC, drug name, package size, highest
+-- shortage) into a group. Each "add" creates one report + N rows.
+--
+-- Group tables (separately defined) live in the audit_share_* schema:
+--   audit_share_groups(id, name, created_by, created_at)
+--   audit_share_group_users(group_id, user_id, role, joined_at)
+--   audit_share_group_invites(group_id, invited_by, invited_user_id, email, status)
+-- ============================================================================
+
+-- ── A single per-pharmacy report added to a group ───────────────────────────
+CREATE TABLE IF NOT EXISTS inventory_group_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID NOT NULL REFERENCES audit_share_groups(id) ON DELETE CASCADE,
+    pharmacy_id UUID REFERENCES pharmacy_details(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+
+    pharmacy_name TEXT NOT NULL,        -- snapshot → becomes the shortage column header
+    source_audit_id TEXT,               -- report it was copied from (frontend auditId is a string)
+    label TEXT,
+    row_count INTEGER DEFAULT 0,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ── The drug rows belonging to a report ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventory_group_report_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id UUID NOT NULL REFERENCES inventory_group_reports(id) ON DELETE CASCADE,
+
+    ndc TEXT,
+    drug_name TEXT,
+    package_size NUMERIC,
+    highest_shortage NUMERIC,
+    sort_order INTEGER,
+    rank NUMERIC,
+
+    -- contributor tagging: one report can hold a per-pharmacy shortage column
+    -- (merged by NDC) when multiple pharmacies upload into the same group
+    pharmacy_id UUID,
+    pharmacy_name TEXT
+);
+
+-- ── Indexes ─────────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_group_reports_group
+    ON inventory_group_reports(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_report_rows_report
+    ON inventory_group_report_rows(report_id);
+CREATE INDEX IF NOT EXISTS idx_group_report_rows_pharmacy
+    ON inventory_group_report_rows(report_id, pharmacy_id);

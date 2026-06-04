@@ -2908,8 +2908,8 @@ export const addGroupReport = async (req, res) => {
     const { id: groupId } = req.params;
 
     const memCheck = await pool.query(
-      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
-      [groupId, pharmacyId],
+      `SELECT 1 FROM audit_share_group_users WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId],
     );
     if (memCheck.rows.length === 0)
       return res.status(403).json({ error: "Not a member of this group" });
@@ -2967,8 +2967,8 @@ export const contributeGroupReport = async (req, res) => {
     const { id: groupId, reportId } = req.params;
 
     const memCheck = await pool.query(
-      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
-      [groupId, pharmacyId],
+      `SELECT 1 FROM audit_share_group_users WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId],
     );
     if (memCheck.rows.length === 0)
       return res.status(403).json({ error: "Not a member of this group" });
@@ -3020,8 +3020,8 @@ export const getGroupReports = async (req, res) => {
     const { id: groupId } = req.params;
 
     const memCheck = await pool.query(
-      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
-      [groupId, pharmacyId],
+      `SELECT 1 FROM audit_share_group_users WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId],
     );
     if (memCheck.rows.length === 0)
       return res.status(403).json({ error: "Not a member of this group" });
@@ -3060,8 +3060,8 @@ export const getGroupReportDetail = async (req, res) => {
     const { id: groupId, reportId } = req.params;
 
     const memCheck = await pool.query(
-      `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
-      [groupId, pharmacyId],
+      `SELECT 1 FROM audit_share_group_users WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId],
     );
     if (memCheck.rows.length === 0)
       return res.status(403).json({ error: "Not a member of this group" });
@@ -3139,9 +3139,9 @@ export const deleteGroupReport = async (req, res) => {
     const check = await pool.query(
       `SELECT r.id
        FROM inventory_group_reports r
-       JOIN inventory_groups g ON g.id = r.group_id
+       JOIN audit_share_groups g ON g.id = r.group_id
        WHERE r.id = $1 AND r.group_id = $2
-         AND (r.user_id = $3 OR g.created_by_user_id = $3)`,
+         AND (r.user_id = $3 OR g.created_by = $3)`,
       [reportId, groupId, userId],
     );
     if (check.rows.length === 0)

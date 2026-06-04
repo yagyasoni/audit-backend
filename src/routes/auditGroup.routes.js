@@ -222,6 +222,27 @@ router.post("/invite", async (req, res) => {
     const groupName = groupResult.rows[0]?.name;
 
     //
+    // GET INVITER (PHARMACY + EMAIL)
+    //
+
+    const inviterResult = await pool.query(
+      `
+      SELECT
+        u.email AS inviter_email,
+        pd.pharmacy_name AS inviter_pharmacy_name
+      FROM users u
+      LEFT JOIN pharmacy_details pd ON pd.user_id = u.id
+      WHERE u.id = $1
+      `,
+      [invited_by],
+    );
+
+    const inviterEmail = inviterResult.rows[0]?.inviter_email || "";
+
+    const inviterPharmacyName =
+      inviterResult.rows[0]?.inviter_pharmacy_name || "A pharmacy";
+
+    //
     // SEND EMAIL
     //
 
@@ -234,18 +255,99 @@ router.post("/invite", async (req, res) => {
         subject: `Invitation to join ${groupName}`,
 
         html: `
-          <div style="font-family:Arial;padding:20px;">
-            <h2>Group Invitation</h2>
+  <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+    <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
 
-            <p>
-              You have been invited to join:
-              <strong>${groupName}</strong>
+      <!-- Header -->
+      <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+        Group Invitation
+      </div>
+
+      <!-- Body -->
+      <div style="padding:24px; color:#1f2937;">
+
+        <p style="margin-bottom:16px;">
+          Hello ${invitedUser.name || "there"},
+        </p>
+
+        <p style="margin-bottom:16px;">
+          You have been invited to join a group on AuditProRx.
+        </p>
+
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:18px; margin:20px 0;">
+
+          <h2 style="margin:0 0 10px 0; color:#0f172a;">
+            ${groupName}
+          </h2>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+
+            <span
+              style="
+                display:inline-block;
+                background:#eff6ff;
+                color:#2563eb;
+                padding:6px 12px;
+                border-radius:999px;
+                font-size:12px;
+                font-weight:600;
+                letter-spacing:0.5px;
+                text-transform:uppercase;
+              "
+            >
+              Audit Sharing Group
+            </span>
+
+          </div>
+
+          <!-- Invited By -->
+          <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e2e8f0;">
+            <p style="margin:0; font-size:12px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; color:#94a3b8;">
+              Invited by
             </p>
-
-            <p>
-              Please login and accept the invite.
+            <p style="margin:6px 0 0 0; font-size:15px; font-weight:600; color:#0f172a;">
+              ${inviterPharmacyName}
+            </p>
+            <p style="margin:2px 0 0 0; font-size:13px; color:#2563eb;">
+              ${inviterEmail}
             </p>
           </div>
+
+        </div>
+
+        <p style="margin-bottom:16px;">
+          Please login to your account and accept the invite.
+        </p>
+
+        <!-- CTA -->
+        <div style="text-align:center; margin:24px 0;">
+          
+            href="https://www.auditprorx.com/group-reports"
+            style="display:inline-block; background:#0f172a; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:600;"
+          >
+            View Invitation
+          </a>
+        </div>
+
+        <p style="margin:0; font-size:12px; color:#94a3b8; text-align:center; word-break:break-all;">
+          Or go to https://www.auditprorx.com/group-reports
+        </p>
+
+        <div style="text-align:center; margin-top:30px;">
+          <span style="font-size:24px; font-weight:bold; letter-spacing:3px; color:#0f172a;">
+            A U D I T P R O R X
+          </span>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+        © 2026 AuditProRx. All rights reserved.
+      </div>
+
+    </div>
+  </div>
         `,
       });
     } catch (emailErr) {
