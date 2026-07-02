@@ -29,7 +29,7 @@ const requireAdmin = (req, res, next) => {
 
   try {
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
 
     if (decoded.role !== "admin") {
       return res.status(403).json({ message: "Admin access only" });
@@ -166,54 +166,6 @@ router.post("/verify-otp", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// router.post("/login", async (req, res) => {
-//   const { email, password } = req.body;
-
-//   const result = await pool.query("SELECT * FROM users WHERE email=$1", [
-//     email,
-//   ]);
-
-//   if (result.rows.length === 0) {
-//     return res.status(401).json({ message: "Invalid email" });
-//   }
-
-//   const user = result.rows[0];
-
-//   if (!user.is_verified) {
-//     return res.status(401).json({ message: "Email not verified" });
-//   }
-
-//   const valid = await bcrypt.compare(password, user.password);
-
-//   if (!valid) {
-//     return res.status(401).json({ message: "Invalid password" });
-//   }
-
-//   const accessToken = jwt.sign(
-//     { userId: user.id, role: user.role },
-//     process.env.JWT_SECRET,
-//     { expiresIn: "15m" },
-//   );
-
-//   const refreshToken = jwt.sign(
-//     { userId: user.id },
-//     process.env.JWT_REFRESH_SECRET,
-//     { expiresIn: "7d" },
-//   );
-
-//   await pool.query(
-//     `INSERT INTO refresh_tokens
-//      (user_id,token,expires_at)
-//      VALUES ($1,$2,NOW() + INTERVAL '7 days')`,
-//     [user.id, refreshToken],
-//   );
-
-//   res.status(200).json({
-//     accessToken,
-//     refreshToken,
-//   });
-// });
 
 router.post("/login", async (req, res) => {
   try {
@@ -1281,6 +1233,63 @@ router.post("/refresh-token", async (req, res) => {
   }
 });
 
+// POST /auth/admin/refresh-token
+router.post("/admin/refresh-token", async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token missing" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, process.env.ADMIN_JWT_REFRESH_SECRET);
+    } catch {
+      return res
+        .status(401)
+        .json({ message: "Invalid or expired refresh token" });
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM refresh_tokens
+       WHERE token = $1 AND user_id = $2 AND expires_at > NOW()`,
+      [refreshToken, decoded.userId],
+    );
+    if (!result.rows.length) {
+      return res
+        .status(401)
+        .json({ message: "Refresh token revoked or expired" });
+    }
+
+    const newAccessToken = jwt.sign(
+      { userId: decoded.userId, role: "admin" },
+      process.env.ADMIN_JWT_SECRET,
+      { expiresIn: "1d" },
+    );
+    const newRefreshToken = jwt.sign(
+      { userId: decoded.userId, role: "admin" },
+      process.env.ADMIN_JWT_REFRESH_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
+      refreshToken,
+    ]);
+    await pool.query(
+      `INSERT INTO refresh_tokens (user_id, token, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+      [decoded.userId, newRefreshToken],
+    );
+
+    res
+      .status(200)
+      .json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // POST /auth/logout — revoke refresh token
 router.post("/logout", async (req, res) => {
   try {
@@ -1329,14 +1338,14 @@ router.post("/admin/verify-otp", async (req, res) => {
 
     // 4. Issue tokens (same pattern as your existing login)
     const accessToken = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
+      { userId: user.id, role: "admin" },
+      process.env.ADMIN_JWT_SECRET,
       { expiresIn: "15m" },
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_REFRESH_SECRET,
+      { userId: user.id, role: "admin" },
+      process.env.ADMIN_JWT_REFRESH_SECRET,
       { expiresIn: "7d" },
     );
 
@@ -1507,7 +1516,7 @@ router.post("/impersonate", async (req, res) => {
 //   }
 // });
 
-router.put("/user-status/:id", async (req, res) => {
+router.put("/user-status/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;

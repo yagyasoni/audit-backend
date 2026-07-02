@@ -5,8 +5,8 @@
 import express from "express";
 import { pool } from "../config/db.js"; // same db.js your other routes use
 import { Resend } from "resend";
-
-// src/templates/emailTemplates.js
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
 
 const feedbackEmailTemplate = (feedback) => `
 <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
@@ -60,13 +60,86 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
 
+function requireAdmin(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token)
+    return res.status(401).json({ success: false, message: "Missing token" });
+
+  try {
+    req.admin = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
+    next();
+  } catch {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired admin token" });
+  }
+}
+
+// Gate everything below, EXCEPT client-facing feedback submission
+router.use((req, res, next) => {
+  if (req.method === "POST" && req.path === "/feedbacks") return next();
+  return requireAdmin(req, res, next);
+});
+
 // DELETE /admin/users/:id
 
 router.delete("/users/:id", async (req, res) => {
   const { id } = req.params;
+  const { password } = req.body;
+
+  const adminId = req.admin?.userId;
+
+  if (!adminId) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Not authenticated" });
+  }
+
+  if (!password) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Admin password is required" });
+  }
+
+  // Optional safety: don't let an admin delete their own account
+  if (id === adminId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "You cannot delete your own account" });
+  }
+
   const client = await pool.connect();
 
   try {
+    // 0️⃣ VERIFY ADMIN PASSWORD (before opening the transaction)
+    const adminRes = await client.query(
+      "SELECT id, password, role FROM users WHERE id = $1",
+      [adminId],
+    );
+
+    if (adminRes.rowCount === 0) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Admin not found" });
+    }
+
+    const admin = adminRes.rows[0];
+
+    if (admin.role !== "admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized" });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, admin.password || "");
+    if (!passwordMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Incorrect admin password" });
+    }
+
+    // ✅ Password verified — proceed with existing deletion flow
     await client.query("BEGIN");
 
     // 1️⃣ Check user
@@ -77,73 +150,38 @@ router.delete("/users/:id", async (req, res) => {
 
     if (userCheck.rowCount === 0) {
       await client.query("ROLLBACK");
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     const email = userCheck.rows[0].email;
 
-    // 2️⃣ Preserve FULL RX snapshot (latest per unique RX)
+    // 2️⃣ Preserve FULL RX snapshot
     await client.query(
       `
       INSERT INTO preserved_inventory_rx (
-        original_user_id,
-        rx_number,
-        date_filled,
-        ndc,
-        status,
-        drug_name,
-        quantity,
-        package_size,
-        primary_bin,
-        primary_paid,
-        secondary_bin,
-        secondary_paid,
-        primary_pcn,
-        primary_group,
-        brand,
-        original_audit_id
+        original_user_id, rx_number, date_filled, ndc, status, drug_name,
+        quantity, package_size, primary_bin, primary_paid, secondary_bin,
+        secondary_paid, primary_pcn, primary_group, brand, original_audit_id
       )
       SELECT DISTINCT ON (a.user_id, ir.rx_number, ir.date_filled)
-          a.user_id,
-          ir.rx_number,
-          ir.date_filled,
-          ir.ndc,
-          ir.status,
-          ir.drug_name,
-          ir.quantity,
-          ir.package_size,
-          ir.primary_bin,
-          ir.primary_paid,
-          ir.secondary_bin,
-          ir.secondary_paid,
-          ir.primary_pcn,
-          ir.primary_group,
-          ir.brand,
-          ir.audit_id
+          a.user_id, ir.rx_number, ir.date_filled, ir.ndc, ir.status, ir.drug_name,
+          ir.quantity, ir.package_size, ir.primary_bin, ir.primary_paid, ir.secondary_bin,
+          ir.secondary_paid, ir.primary_pcn, ir.primary_group, ir.brand, ir.audit_id
       FROM inventory_rows ir
       JOIN audits a ON ir.audit_id = a.id
       WHERE a.user_id = $1
-      AND ir.rx_number IS NOT NULL
-      AND ir.date_filled IS NOT NULL
+        AND ir.rx_number IS NOT NULL
+        AND ir.date_filled IS NOT NULL
       ORDER BY a.user_id, ir.rx_number, ir.date_filled, ir.id DESC
       ON CONFLICT (original_user_id, rx_number, date_filled) DO UPDATE
-      SET
-          ndc = EXCLUDED.ndc,
-          status = EXCLUDED.status,
-          drug_name = EXCLUDED.drug_name,
-          quantity = EXCLUDED.quantity,
-          package_size = EXCLUDED.package_size,
-          primary_bin = EXCLUDED.primary_bin,
-          primary_paid = EXCLUDED.primary_paid,
-          secondary_bin = EXCLUDED.secondary_bin,
-          secondary_paid = EXCLUDED.secondary_paid,
-          primary_pcn = EXCLUDED.primary_pcn,
-          primary_group = EXCLUDED.primary_group,
-          brand = EXCLUDED.brand,
-          original_audit_id = EXCLUDED.original_audit_id;
+      SET ndc = EXCLUDED.ndc, status = EXCLUDED.status, drug_name = EXCLUDED.drug_name,
+          quantity = EXCLUDED.quantity, package_size = EXCLUDED.package_size,
+          primary_bin = EXCLUDED.primary_bin, primary_paid = EXCLUDED.primary_paid,
+          secondary_bin = EXCLUDED.secondary_bin, secondary_paid = EXCLUDED.secondary_paid,
+          primary_pcn = EXCLUDED.primary_pcn, primary_group = EXCLUDED.primary_group,
+          brand = EXCLUDED.brand, original_audit_id = EXCLUDED.original_audit_id;
       `,
       [id],
     );
@@ -164,11 +202,9 @@ router.delete("/users/:id", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Delete user error:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete user",
-    });
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to delete user" });
   } finally {
     client.release();
   }
@@ -176,15 +212,19 @@ router.delete("/users/:id", async (req, res) => {
 
 // router.delete("/users/:id", async (req, res) => {
 //   const { id } = req.params;
+//   const client = await pool.connect();
 
 //   try {
-//     // optional: check if user exists
-//     const userCheck = await pool.query(
+//     await client.query("BEGIN");
+
+//     // 1️⃣ Check user
+//     const userCheck = await client.query(
 //       "SELECT id, email FROM users WHERE id = $1",
 //       [id],
 //     );
 
 //     if (userCheck.rowCount === 0) {
+//       await client.query("ROLLBACK");
 //       return res.status(404).json({
 //         success: false,
 //         message: "User not found",
@@ -193,23 +233,92 @@ router.delete("/users/:id", async (req, res) => {
 
 //     const email = userCheck.rows[0].email;
 
-//     // 🔥 delete user (CASCADE handles rest)
-//     await pool.query("DELETE FROM users WHERE id = $1", [id]);
+//     // 2️⃣ Preserve FULL RX snapshot (latest per unique RX)
+//     await client.query(
+//       `
+//       INSERT INTO preserved_inventory_rx (
+//         original_user_id,
+//         rx_number,
+//         date_filled,
+//         ndc,
+//         status,
+//         drug_name,
+//         quantity,
+//         package_size,
+//         primary_bin,
+//         primary_paid,
+//         secondary_bin,
+//         secondary_paid,
+//         primary_pcn,
+//         primary_group,
+//         brand,
+//         original_audit_id
+//       )
+//       SELECT DISTINCT ON (a.user_id, ir.rx_number, ir.date_filled)
+//           a.user_id,
+//           ir.rx_number,
+//           ir.date_filled,
+//           ir.ndc,
+//           ir.status,
+//           ir.drug_name,
+//           ir.quantity,
+//           ir.package_size,
+//           ir.primary_bin,
+//           ir.primary_paid,
+//           ir.secondary_bin,
+//           ir.secondary_paid,
+//           ir.primary_pcn,
+//           ir.primary_group,
+//           ir.brand,
+//           ir.audit_id
+//       FROM inventory_rows ir
+//       JOIN audits a ON ir.audit_id = a.id
+//       WHERE a.user_id = $1
+//       AND ir.rx_number IS NOT NULL
+//       AND ir.date_filled IS NOT NULL
+//       ORDER BY a.user_id, ir.rx_number, ir.date_filled, ir.id DESC
+//       ON CONFLICT (original_user_id, rx_number, date_filled) DO UPDATE
+//       SET
+//           ndc = EXCLUDED.ndc,
+//           status = EXCLUDED.status,
+//           drug_name = EXCLUDED.drug_name,
+//           quantity = EXCLUDED.quantity,
+//           package_size = EXCLUDED.package_size,
+//           primary_bin = EXCLUDED.primary_bin,
+//           primary_paid = EXCLUDED.primary_paid,
+//           secondary_bin = EXCLUDED.secondary_bin,
+//           secondary_paid = EXCLUDED.secondary_paid,
+//           primary_pcn = EXCLUDED.primary_pcn,
+//           primary_group = EXCLUDED.primary_group,
+//           brand = EXCLUDED.brand,
+//           original_audit_id = EXCLUDED.original_audit_id;
+//       `,
+//       [id],
+//     );
 
-//     // ⚠️ manual cleanup (email-based tables)
-//     await pool.query("DELETE FROM email_otps WHERE email = $1", [email]);
-//     await pool.query("DELETE FROM password_resets WHERE email = $1", [email]);
+//     // 3️⃣ Delete user (CASCADE)
+//     await client.query("DELETE FROM users WHERE id = $1", [id]);
+
+//     // 4️⃣ Manual cleanup
+//     await client.query("DELETE FROM email_otps WHERE email = $1", [email]);
+//     await client.query("DELETE FROM password_resets WHERE email = $1", [email]);
+
+//     await client.query("COMMIT");
 
 //     return res.json({
 //       success: true,
-//       message: "User and all related data deleted successfully",
+//       message: "User deleted. Full RX data preserved.",
 //     });
 //   } catch (err) {
+//     await client.query("ROLLBACK");
 //     console.error("Delete user error:", err);
+
 //     return res.status(500).json({
 //       success: false,
 //       message: "Failed to delete user",
 //     });
+//   } finally {
+//     client.release();
 //   }
 // });
 
@@ -464,25 +573,6 @@ router.delete("/excel/row/:id", async (req, res) => {
     return res.status(500).json({ error: "Failed to delete row." });
   }
 });
-
-// router.get("/master-sheet-queue", async (req, res) => {
-//   try {
-//     const result = await pool.query(`
-//       SELECT id, bin, pcn, grp, pbm_name, payer_type
-//       FROM master_sheet_queue
-//       WHERE status = 'pending'
-//       ORDER BY id ASC
-//     `);
-
-//     return res.status(200).json({
-//       rows: result.rows,
-//       total: result.rows.length,
-//     });
-//   } catch (err) {
-//     console.error("[GET /master-sheet-queue]", err);
-//     return res.status(500).json({ error: "Failed to fetch queue." });
-//   }
-// });
 
 router.get("/master-sheet-queue", async (req, res) => {
   try {

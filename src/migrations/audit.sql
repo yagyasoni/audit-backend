@@ -23,8 +23,7 @@ CREATE TABLE audit_inventory_files (
 CREATE TABLE IF NOT EXISTS inventory_rows (
   
     id BIGSERIAL PRIMARY KEY,
-    audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,
-    
+    audit_id UUID REFERENCES audits(id) ON DELETE CASCADE,    
     ndc TEXT,
     rx_number TEXT,
     status TEXT,
@@ -477,36 +476,7 @@ CREATE TABLE publishing_chat_messages (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- FINAL SUBSCRIPTIONS SCHEMA
 
--- CREATE TABLE subscriptions (
---     id SERIAL PRIMARY KEY,
-
---     user_id UUID NOT NULL UNIQUE,
-
---     stripe_customer_id VARCHAR(255),
---     stripe_subscription_id VARCHAR(255),
-
---     status VARCHAR(50),
-
---     current_period_end TIMESTAMP,
---     grace_period_end TIMESTAMP,
---     trial_end TIMESTAMP,
-
---     inventory_access BOOLEAN DEFAULT FALSE,
---     drug_lookup_access BOOLEAN DEFAULT FALSE,
---     leads_access BOOLEAN DEFAULT FALSE,
---     full_access BOOLEAN DEFAULT FALSE,
-
---     referral_code VARCHAR(255),
-
---     active_price_ids TEXT[],
-
---     created_at TIMESTAMP DEFAULT NOW()
--- );
-
--- CVS Caremark Aberrant Product List — effective 2024-01-01
--- Source: Aberrant-Product-Full-List-Portal_Effective-01-01-2024_FINAL-11-24-2023.pdf
 
 CREATE TABLE IF NOT EXISTS aberrant_ndcs (
     ndc TEXT PRIMARY KEY,
@@ -1695,51 +1665,51 @@ ALTER TABLE inventory_rows ADD COLUMN IF NOT EXISTS secondary_group TEXT;
 -- from the PrimeRx inventory export (PATIENTCOPAY column).
 ALTER TABLE inventory_rows ADD COLUMN IF NOT EXISTS patient_copay NUMERIC;
 
-CREATE TABLE subscriptions (
-    id SERIAL PRIMARY KEY,
+-- CREATE TABLE subscriptions (
+--     id SERIAL PRIMARY KEY,
 
-    user_id UUID NOT NULL UNIQUE,
+--     user_id UUID NOT NULL UNIQUE,
 
-    stripe_customer_id VARCHAR(255),
+--     stripe_customer_id VARCHAR(255),
 
-    stripe_subscription_id VARCHAR(255),
+--     stripe_subscription_id VARCHAR(255),
 
-    status VARCHAR(50) DEFAULT 'inactive',
+--     status VARCHAR(50) DEFAULT 'inactive',
 
-    -- package info
-    subscription_type VARCHAR(100) DEFAULT 'none',
+--     -- package info
+--     subscription_type VARCHAR(100) DEFAULT 'none',
 
-    -- billing
-    current_period_end TIMESTAMP,
+--     -- billing
+--     current_period_end TIMESTAMP,
 
-    grace_period_end TIMESTAMP,
+--     grace_period_end TIMESTAMP,
 
-    cancel_at_period_end BOOLEAN DEFAULT FALSE,
+--     cancel_at_period_end BOOLEAN DEFAULT FALSE,
 
-    -- access controls
-    inventory_reports_access BOOLEAN DEFAULT FALSE,
+--     -- access controls
+--     inventory_reports_access BOOLEAN DEFAULT FALSE,
 
-    inventory_view_access BOOLEAN DEFAULT FALSE,
+--     inventory_view_access BOOLEAN DEFAULT FALSE,
 
-    drug_lookup_access BOOLEAN DEFAULT FALSE,
+--     drug_lookup_access BOOLEAN DEFAULT FALSE,
 
-    leads_access BOOLEAN DEFAULT FALSE,
+--     leads_access BOOLEAN DEFAULT FALSE,
 
-    full_access BOOLEAN DEFAULT FALSE,
+--     full_access BOOLEAN DEFAULT FALSE,
 
-    -- admin manually granted access
-    admin_override BOOLEAN DEFAULT FALSE,
+--     -- admin manually granted access
+--     admin_override BOOLEAN DEFAULT FALSE,
 
-    -- stripe products
-    active_price_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
+--     -- stripe products
+--     active_price_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
 
-    -- referral / coupon
-    referral_code VARCHAR(255),
+--     -- referral / coupon
+--     referral_code VARCHAR(255),
 
-    created_at TIMESTAMP DEFAULT NOW(),
+--     created_at TIMESTAMP DEFAULT NOW(),
 
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+--     updated_at TIMESTAMP DEFAULT NOW()
+-- );
 
 CREATE TABLE IF NOT EXISTS ndc_sheet (
     id BIGSERIAL PRIMARY KEY,
@@ -1887,3 +1857,43 @@ CREATE INDEX IF NOT EXISTS idx_group_report_rows_report
     ON inventory_group_report_rows(report_id);
 CREATE INDEX IF NOT EXISTS idx_group_report_rows_pharmacy
     ON inventory_group_report_rows(report_id, pharmacy_id);
+
+
+
+CREATE TABLE subscriptions (
+  id                       SERIAL PRIMARY KEY,
+  user_id                  INTEGER     NOT NULL UNIQUE,   -- ON CONFLICT (user_id) target
+  stripe_customer_id       TEXT,
+  stripe_subscription_id   TEXT,
+  status                   TEXT,                          -- inactive | trialing | active | past_due | canceled
+  subscription_type        TEXT,                          -- none | base | professional | full_access
+  current_period_end       TIMESTAMPTZ,
+  grace_period_end         TIMESTAMPTZ,
+  inventory_reports_access BOOLEAN     NOT NULL DEFAULT false,
+  inventory_view_access    BOOLEAN     NOT NULL DEFAULT false,
+  drug_lookup_access       BOOLEAN     NOT NULL DEFAULT false,
+  leads_access             BOOLEAN     NOT NULL DEFAULT false,
+  full_access              BOOLEAN     NOT NULL DEFAULT false,
+  admin_override           BOOLEAN     NOT NULL DEFAULT false,
+  active_price_ids         TEXT[]      NOT NULL DEFAULT ARRAY[]::TEXT[],
+  referral_code            TEXT,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  cancel_at_period_end     BOOLEAN     NOT NULL DEFAULT false,
+  trial_end                TIMESTAMPTZ,
+  pending_plan             TEXT,
+  trial_code               TEXT                            -- <<< NEW: trial code used + per-user redemption marker
+);
+
+
+
+CREATE TABLE trial_codes (
+  id              SERIAL PRIMARY KEY,
+  code            TEXT    NOT NULL UNIQUE,
+  trial_days      INTEGER NOT NULL DEFAULT 14,
+  active          BOOLEAN NOT NULL DEFAULT true,
+  max_redemptions INTEGER,                        -- NULL = unlimited
+  times_redeemed  INTEGER NOT NULL DEFAULT 0,
+  expires_at      TIMESTAMPTZ,                    -- NULL = never expires
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -106,9 +106,28 @@ import {
   getGroupReports,
   getGroupReportDetail,
   deleteGroupReport,
+  getListingReports,
+  getListingReportById,
+  deleteListingReport,
 } from "../controllers/inventoryView.controller.js";
 
 const router = express.Router();
+
+function requireAdmin(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token)
+    return res.status(401).json({ success: false, message: "Missing token" });
+
+  try {
+    req.admin = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
+    next();
+  } catch {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired admin token" });
+  }
+}
 
 // ── Listings ────────────────────────────────────────────────
 router.get("/listings", getListings);
@@ -116,6 +135,9 @@ router.post("/listings", createListing);
 router.patch("/listings/:id", updateListing);
 router.delete("/listings/:id", deleteListing);
 router.post("/listings/:id/report", reportListing);
+router.get("/listings/reports", getListingReports);
+router.get("/listings/reports/:id", getListingReportById);
+router.delete("/listings/reports/:id", deleteListingReport);
 
 // ── Agreement ───────────────────────────────────────────────
 router.get("/agreement/status", getAgreementStatus);

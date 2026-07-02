@@ -1338,16 +1338,31 @@ export const getDrugLookup = async (auditId, ingredient) => {
 };
 
 export const searchDrugNames = async (query, limit = 10) => {
+  // Split into whitespace-separated tokens and require EVERY token to appear
+  // somewhere in drug_name (order-independent AND match). This lets multi-word
+  // queries like "nystatin triamcinol" match "NYSTATIN, TRIAMCINOL ..." even
+  // though punctuation/word-order differ. A single token behaves like before.
+  const tokens = String(query ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const conditions = tokens.map((_, i) => `drug_name ILIKE $${i + 1}`);
+  const params = tokens.map((t) => `%${t}%`);
+  params.push(limit);
+
   const result = await pool.query(
     `
     SELECT drug_name
     FROM ndc_sheet
-    WHERE drug_name ILIKE $1
+    WHERE ${conditions.join(" AND ")}
+      AND LENGTH(drug_name) <= 140
     GROUP BY drug_name
     ORDER BY drug_name
-    LIMIT $2
+    LIMIT $${tokens.length + 1}
     `,
-    [`%${query}%`, limit],
+    params,
   );
 
   return result.rows.map((r) => ({
@@ -1357,23 +1372,13 @@ export const searchDrugNames = async (query, limit = 10) => {
 };
 
 // export const searchDrugNames = async (query, limit = 10) => {
-//   const EFFECTIVE = `COALESCE(ns.drug_name, inventory_rows.drug_name)`;
-//   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(${EFFECTIVE}, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
-
 //   const result = await pool.query(
 //     `
-//     SELECT
-//       ${CLEAN_DRUG} AS drug_name,
-//       COUNT(*) AS rx_count
-//     FROM inventory_rows
-//     LEFT JOIN ndc_sheet ns
-//   ON RIGHT(LPAD(REGEXP_REPLACE(ns.ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
-//    = RIGHT(LPAD(REGEXP_REPLACE(inventory_rows.ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
-//     WHERE ${EFFECTIVE} ILIKE $1
-//       AND ${EFFECTIVE} IS NOT NULL
-//       AND TRIM(${EFFECTIVE}) != ''
-//     GROUP BY ${CLEAN_DRUG}
-//     ORDER BY rx_count DESC
+//     SELECT drug_name
+//     FROM ndc_sheet
+//     WHERE drug_name ILIKE $1
+//     GROUP BY drug_name
+//     ORDER BY drug_name
 //     LIMIT $2
 //     `,
 //     [`%${query}%`, limit],
@@ -1381,135 +1386,8 @@ export const searchDrugNames = async (query, limit = 10) => {
 
 //   return result.rows.map((r) => ({
 //     name: r.drug_name,
-//     rx_count: Number(r.rx_count),
+//     rx_count: 0, // kept in response shape for FE compatibility
 //   }));
-// };
-
-// ── GLOBAL DRUG LOOKUP (across ALL audits, with optional BIN/PCN/GRP filters) ──
-
-// export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
-//   const { bin, pcn, grp, ndc } = filters;
-//   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
-
-//   // Build WHERE clause dynamically
-//   const conditions = [];
-//   const params = [];
-//   let pIdx = 1;
-
-//   // ── Primary filter: NDC OR ingredient ──
-//   if (ndc && String(ndc).trim()) {
-//     // const digits = String(ndc).replace(/\D/g, "");
-//     const digits = String(ndc).replace(/\D/g, "").padStart(11, "0");
-
-//     conditions.push(
-//       `LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0') = LPAD($${pIdx}, 11, '0')`,
-//     );
-//     params.push(digits);
-//     pIdx++;
-//   } else if (ingredient && String(ingredient).trim()) {
-//     conditions.push(
-//       `UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($${pIdx})`,
-//     );
-//     params.push(ingredient);
-//     pIdx++;
-//   } else {
-//     // Neither provided — return empty shape
-//     return {
-//       ingredient: "",
-//       filters: { bin: null, pcn: null, grp: null, ndc: null },
-//       drugs: [],
-//     };
-//   }
-
-//   // ── Optional BIN/PCN/GRP filters ──
-//   if (bin && String(bin).trim()) {
-//     conditions.push(
-//       `LTRIM(UPPER(TRIM(COALESCE(primary_bin,''))),'0') = LTRIM(UPPER(TRIM($${pIdx})),'0')`,
-//     );
-//     params.push(String(bin).trim());
-//     pIdx++;
-//   }
-//   if (pcn && String(pcn).trim()) {
-//     conditions.push(
-//       `UPPER(TRIM(COALESCE(primary_pcn,''))) = UPPER(TRIM($${pIdx}))`,
-//     );
-//     params.push(String(pcn).trim());
-//     pIdx++;
-//   }
-//   if (grp && String(grp).trim()) {
-//     conditions.push(
-//       `UPPER(COALESCE(NULLIF(TRIM(primary_group), ''), 'NO_GROUP')) = UPPER(TRIM($${pIdx}))`,
-//     );
-//     params.push(String(grp).trim());
-//     pIdx++;
-//   }
-
-//   const whereClause = conditions.join(" AND ");
-
-//   // Parent rows — grouped by cleaned drug_name
-//   const drugsRes = await pool.query(
-//     `
-//     SELECT
-//       ${CLEAN_DRUG}                                              AS drug_name,
-//       MAX(brand)                                                 AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))          AS rx_count,
-//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
-//     FROM inventory_rows
-//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
-//     WHERE ${whereClause}
-//     GROUP BY ${CLEAN_DRUG}
-//     ORDER BY rx_count DESC
-//     `,
-//     params,
-//   );
-
-//   // Child rows — grouped by cleaned drug_name + NDC
-//   const ndcRes = await pool.query(
-//     `
-//     SELECT
-//       ${CLEAN_DRUG}                                              AS drug_name,
-//       LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc,
-//       MAX(brand)                                                 AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))          AS rx_count,
-//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
-//     FROM inventory_rows
-//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
-//     WHERE ${whereClause}
-//     GROUP BY ${CLEAN_DRUG}, LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0')
-//     ORDER BY ${CLEAN_DRUG}, rx_count DESC
-//     `,
-//     params,
-//   );
-
-//   const byDrug = new Map();
-//   for (const d of drugsRes.rows) byDrug.set(d.drug_name, { ...d, ndcs: [] });
-//   for (const n of ndcRes.rows) {
-//     if (byDrug.has(n.drug_name)) byDrug.get(n.drug_name).ndcs.push(n);
-//   }
-
-//   // For the title on the results page, prefer the actual drug name when in NDC mode
-//   const displayHeader = ndc
-//     ? drugsRes.rows[0]?.drug_name || String(ndc)
-//     : String(ingredient || "").toUpperCase();
-
-//   return {
-//     ingredient: displayHeader,
-//     filters: {
-//       bin: bin || null,
-//       pcn: pcn || null,
-//       grp: grp || null,
-//       ndc: ndc || null,
-//     },
-//     drugs: Array.from(byDrug.values()),
-//   };
 // };
 
 export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
@@ -1553,12 +1431,16 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
     params.push(digits);
     pIdx++;
   } else if (ingredient && String(ingredient).trim()) {
-    // Filter by canonical name's first word, so renames in ndc_sheet are searchable.
-    conditions.push(
-      `UPPER(SPLIT_PART(TRIM(nn.raw_name), ' ', 1)) = UPPER($${pIdx})`,
-    );
-    params.push(ingredient);
-    pIdx++;
+    // Match every whitespace token of the search term anywhere in the canonical
+    // name (order-independent), so e.g. "PROBIOTICS" lists BOTH
+    // "PROBIOTICS (BIOSTORA)" and "MICROBALANCE PROBIOTICS" — not just names
+    // that START with the term.
+    const ingTokens = String(ingredient).trim().split(/\s+/).filter(Boolean);
+    for (const tok of ingTokens) {
+      conditions.push(`nn.raw_name ILIKE $${pIdx}`);
+      params.push(`%${tok}%`);
+      pIdx++;
+    }
   } else {
     // Neither provided — return empty shape
     return {
@@ -1567,6 +1449,10 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
       drugs: [],
     };
   }
+
+  // Exclude corrupted rows where an entire CSV blob was imported into a single
+  // drug_name cell (real drug names are short). Keeps junk out of results.
+  conditions.push(`LENGTH(nn.raw_name) <= 140`);
 
   // ── Optional BIN/PCN/GRP filters ──
   if (bin && String(bin).trim()) {
@@ -1665,17 +1551,65 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
     drugs: Array.from(byDrug.values()),
   };
 };
+
 // export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
-//   const { bin, pcn, grp } = filters;
-//   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
+//   const { bin, pcn, grp, ndc } = filters;
+
+//   // Normalize an NDC to 10 digits (strip non-digits, left-pad to 11, take last 10)
+//   const NDC_NORM = (col) =>
+//     `RIGHT(LPAD(REGEXP_REPLACE(${col}, '[^0-9]', '', 'g'), 11, '0'), 10)`;
+
+//   // Per-NDC canonical name. JOIN on normalized NDC so format differences
+//   // between ndc_sheet.ndc and inventory_rows.ndc (hyphens, leading zeros)
+//   // don't break the match.
+//   const NDC_NAME_CTE = `
+//     WITH ndc_name AS (
+//       SELECT
+//         ${NDC_NORM("inventory_rows.ndc")} AS ndc_norm,
+//         COALESCE(MAX(ns.drug_name), MAX(inventory_rows.drug_name)) AS raw_name,
+//         MAX(ns.ndc) AS ns_ndc
+//       FROM inventory_rows
+//       LEFT JOIN ndc_sheet ns
+//         ON ${NDC_NORM("ns.ndc")} = ${NDC_NORM("inventory_rows.ndc")}
+//       WHERE inventory_rows.ndc IS NOT NULL
+//         AND TRIM(inventory_rows.ndc) <> ''
+//       GROUP BY ${NDC_NORM("inventory_rows.ndc")}
+//     )
+//   `;
+
+//   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(nn.raw_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
 
 //   // Build WHERE clause dynamically
-//   const conditions = [`UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($1)`];
-//   const params = [ingredient];
-//   let pIdx = 2;
+//   const conditions = [];
+//   const params = [];
+//   let pIdx = 1;
 
+//   // ── Primary filter: NDC OR ingredient ──
+//   if (ndc && String(ndc).trim()) {
+//     const digits = String(ndc).replace(/\D/g, "");
+//     conditions.push(
+//       `${NDC_NORM("inventory_rows.ndc")} = RIGHT(LPAD($${pIdx}, 11, '0'), 10)`,
+//     );
+//     params.push(digits);
+//     pIdx++;
+//   } else if (ingredient && String(ingredient).trim()) {
+//     // Filter by canonical name's first word, so renames in ndc_sheet are searchable.
+//     conditions.push(
+//       `UPPER(SPLIT_PART(TRIM(nn.raw_name), ' ', 1)) = UPPER($${pIdx})`,
+//     );
+//     params.push(ingredient);
+//     pIdx++;
+//   } else {
+//     // Neither provided — return empty shape
+//     return {
+//       ingredient: "",
+//       filters: { bin: null, pcn: null, grp: null, ndc: null },
+//       drugs: [],
+//     };
+//   }
+
+//   // ── Optional BIN/PCN/GRP filters ──
 //   if (bin && String(bin).trim()) {
-//     // Strip leading zeros on both sides so user typing "4336" matches DB "004336"
 //     conditions.push(
 //       `LTRIM(UPPER(TRIM(COALESCE(primary_bin,''))),'0') = LTRIM(UPPER(TRIM($${pIdx})),'0')`,
 //     );
@@ -1699,45 +1633,52 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
 
 //   const whereClause = conditions.join(" AND ");
 
-//   // Parent rows — grouped by cleaned drug_name
+//   // Parent rows — grouped by canonical drug name
 //   const drugsRes = await pool.query(
 //     `
+//     ${NDC_NAME_CTE}
 //     SELECT
 //       ${CLEAN_DRUG}                                              AS drug_name,
 //       MAX(brand)                                                 AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))                                AS rx_count,
+//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))          AS rx_count,
 //       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
 //       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
 //         / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
 //       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
 //         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
 //     FROM inventory_rows
-// INNER JOIN audits a ON a.id = inventory_rows.audit_id
-// WHERE ${whereClause}
+//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
+//     INNER JOIN ndc_name nn ON nn.ndc_norm = ${NDC_NORM("inventory_rows.ndc")}
+//     WHERE ${whereClause}
 //     GROUP BY ${CLEAN_DRUG}
 //     ORDER BY rx_count DESC
 //     `,
 //     params,
 //   );
 
-//   // Child rows — grouped by cleaned drug_name + NDC
+//   // Child rows — one per normalized NDC. NDC never appears twice.
 //   const ndcRes = await pool.query(
 //     `
+//     ${NDC_NAME_CTE}
 //     SELECT
-//       ${CLEAN_DRUG}                                              AS drug_name,
-//       RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10) AS ndc,
-//       MAX(brand)                                                 AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))                                                   AS rx_count,
-//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
+//       MAX(${CLEAN_DRUG})                                              AS drug_name,
+//       COALESCE(
+//         MAX(nn.ns_ndc),
+//         LPAD(REGEXP_REPLACE(MAX(inventory_rows.ndc), '[^0-9]', '', 'g'), 11, '0')
+//       )                                                               AS ndc,
+//       MAX(brand)                                                      AS brand,
+//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))               AS rx_count,
+//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)                    AS avg_qty_per_rx,
 //       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
+//         / NULLIF(COUNT(*), 0)                                         AS avg_ins_paid_per_rx,
 //       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
+//         / NULLIF(SUM(quantity), 0)                                    AS avg_ins_paid_per_unit
 //     FROM inventory_rows
-// INNER JOIN audits a ON a.id = inventory_rows.audit_id
-// WHERE ${whereClause}
-//     GROUP BY ${CLEAN_DRUG}, RIGHT(LPAD(REGEXP_REPLACE(ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
-//     ORDER BY ${CLEAN_DRUG}, rx_count DESC
+//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
+//     INNER JOIN ndc_name nn ON nn.ndc_norm = ${NDC_NORM("inventory_rows.ndc")}
+//     WHERE ${whereClause}
+//     GROUP BY ${NDC_NORM("inventory_rows.ndc")}
+//     ORDER BY drug_name, rx_count DESC
 //     `,
 //     params,
 //   );
@@ -1748,9 +1689,19 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
 //     if (byDrug.has(n.drug_name)) byDrug.get(n.drug_name).ndcs.push(n);
 //   }
 
+//   // For the title on the results page, prefer the actual drug name when in NDC mode
+//   const displayHeader = ndc
+//     ? drugsRes.rows[0]?.drug_name || String(ndc)
+//     : String(ingredient || "").toUpperCase();
+
 //   return {
-//     ingredient: ingredient.toUpperCase(),
-//     filters: { bin: bin || null, pcn: pcn || null, grp: grp || null },
+//     ingredient: displayHeader,
+//     filters: {
+//       bin: bin || null,
+//       pcn: pcn || null,
+//       grp: grp || null,
+//       ndc: ndc || null,
+//     },
 //     drugs: Array.from(byDrug.values()),
 //   };
 // };

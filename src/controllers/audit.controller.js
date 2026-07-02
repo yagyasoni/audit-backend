@@ -44,6 +44,212 @@ export const createAudit = async (req, res) => {
   }
 };
 
+// export const getFullReport = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     const countCheck = await pool.query(
+//       `SELECT COUNT(*) FROM inventory_rows WHERE audit_id = $1`,
+//       [id],
+//     );
+//     console.log("ROW COUNT FOR AUDIT:", id, countCheck.rows[0]);
+
+//     const result = await pool.query(
+//       `
+//       WITH a AS (
+//         SELECT
+//           inventory_start_date,
+//           inventory_end_date,
+//           wholesaler_start_date,
+//           wholesaler_end_date
+//         FROM audits
+//         WHERE id = $1
+//       ),
+//       ws AS (
+//         SELECT
+//           LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc_normalized,
+//           SUM(wr.quantity) AS total_ordered,
+//           SUM(COALESCE(wr.total_cost, 0)) AS total_cost
+//         FROM wholesaler_rows wr
+//         CROSS JOIN a
+//         WHERE wr.audit_id = $1
+//           AND (
+//             wr.invoice_date IS NULL
+//             OR (a.wholesaler_start_date IS NULL AND a.wholesaler_end_date IS NULL)
+//             OR wr.invoice_date BETWEEN a.wholesaler_start_date AND a.wholesaler_end_date
+//           )
+//         GROUP BY LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0')
+//       )
+//       SELECT
+//         i.ndc,
+//         MAX(REGEXP_REPLACE(i.drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\).*$', '')) AS drug_name,
+//         MAX(i.brand) AS brand,
+//         MAX(i.package_size) AS package_size,
+//         COALESCE(MAX(ws.total_ordered), 0) AS total_ordered,
+
+//         SUM(CASE WHEN i.date_filled IS NULL
+//                   OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                   OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+//                  THEN i.quantity ELSE 0 END) AS total_billed,
+
+//         SUM(CASE WHEN i.date_filled IS NULL
+//                   OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                   OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+//                  THEN COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0)
+//                  ELSE 0 END) AS total_amount,
+
+//         COALESCE(MAX(ws.total_cost), 0) AS cost,
+
+//         COALESCE(MAX(ws.total_ordered), 0) - SUM(
+//           CASE WHEN i.date_filled IS NULL
+//                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+//                THEN i.quantity ELSE 0 END
+//         ) AS total_shortage,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) = 'horizon'
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS horizon,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) = 'express scripts'
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS express,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) = 'caremark'
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) IN ('optum','optumrx')
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS optumrx,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) = 'humana'
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS humana,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.payer_type) = 'medicaid'
+//                           THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.payer_type) = 'medicare'
+//                           THEN i.quantity ELSE 0 END), 0) AS medicare,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND (LOWER(pbm.pbm_name) ILIKE '%southern scripts%'
+//                               OR LOWER(pbm.pbm_name) ILIKE '%liviniti%')
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS ssc,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.pbm_name) IN ('medimpact')
+//                             AND LOWER(pbm.payer_type) = 'commercial'
+//                           THEN i.quantity ELSE 0 END), 0) AS pdmi,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.payer_type) IN ('coupon','copay card')
+//                           THEN i.quantity ELSE 0 END), 0) AS coupon,
+
+//         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+//                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//                             AND LOWER(pbm.payer_type) = 'government/military'
+//                           THEN i.quantity ELSE 0 END), 0) AS gov_military,
+
+//         COUNT(DISTINCT CASE WHEN i.date_filled IS NULL
+//                               OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                               OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date
+//                             THEN i.rx_number END) AS claims_count,
+
+//         BOOL_OR(ab.ndc IS NOT NULL AND UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%') AS is_aberrant,
+
+//         COUNT(DISTINCT CASE
+//           WHEN ab.ndc IS NOT NULL
+//             AND UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%'
+//             AND (i.date_filled IS NULL
+//                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//           THEN i.rx_number END) AS aberrant_caremark_claims,
+
+//         SUM(CASE
+//           WHEN ab.ndc IS NOT NULL
+//             AND UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%'
+//             AND (i.date_filled IS NULL
+//                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+//                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+//           THEN COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) ELSE 0 END) AS aberrant_caremark_amount
+
+//       FROM inventory_rows i
+//       CROSS JOIN a
+
+//       LEFT JOIN LATERAL (
+//         SELECT ms.pbm_name, ms.payer_type
+//         FROM (
+//           SELECT pbm_name, payer_type, 1 AS priority FROM master_sheet m
+//            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+//              AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+//              AND UPPER(TRIM(COALESCE(m.grp,''))) = UPPER(TRIM(COALESCE(i.primary_group,'')))
+//           UNION ALL
+//           SELECT pbm_name, payer_type, 2 FROM master_sheet m
+//            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+//              AND UPPER(TRIM(COALESCE(m.pcn,''))) = UPPER(TRIM(COALESCE(i.primary_pcn,'')))
+//           UNION ALL
+//           SELECT pbm_name, payer_type, 3 FROM master_sheet m
+//            WHERE LTRIM(UPPER(TRIM(m.bin)),'0') = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))),'0')
+//           ORDER BY priority LIMIT 1
+//         ) ms
+//       ) pbm ON true
+
+//       LEFT JOIN ws ON ws.ndc_normalized
+//                     = LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
+
+//       LEFT JOIN aberrant_ndcs ab
+//         ON ab.ndc = LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
+
+//       WHERE i.audit_id = $1
+
+//       GROUP BY i.ndc
+
+//       -- ✅ SCENE 2 — NO HAVING clause, every drug stays in the result
+
+//       ORDER BY total_billed DESC
+//       `,
+//       [id],
+//     );
+
+//     console.log("REPORT ROWS:", result.rows.length);
+//     return res.json(result.rows);
+//   } catch (error) {
+//     console.error("Report aggregation error:", error);
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
+
 export const getFullReport = async (req, res) => {
   try {
     const { id } = req.params;
@@ -187,6 +393,20 @@ export const getFullReport = async (req, res) => {
                             THEN i.rx_number END) AS claims_count,
 
         BOOL_OR(ab.ndc IS NOT NULL AND UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%') AS is_aberrant,
+
+        COUNT(DISTINCT CASE
+          WHEN UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%'
+            AND (i.date_filled IS NULL
+                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+          THEN i.rx_number END) AS caremark_claims_count,
+
+        SUM(CASE
+          WHEN UPPER(TRIM(COALESCE(pbm.pbm_name, ''))) LIKE '%CAREMARK%'
+            AND (i.date_filled IS NULL
+                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+          THEN COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) ELSE 0 END) AS caremark_amount_total,
 
         COUNT(DISTINCT CASE
           WHEN ab.ndc IS NOT NULL
@@ -877,6 +1097,102 @@ export const searchNdcSuggestions = async (req, res) => {
   }
 };
 
+// export const getAberrantRiskSummary = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { month } = req.query; // format: "YYYY-MM"
+
+//     const caremarkBinsCte = `
+//       caremark_bins AS (
+//         SELECT DISTINCT LTRIM(UPPER(TRIM(bin)), '0') AS bin_norm
+//         FROM master_sheet
+//         WHERE UPPER(TRIM(pbm_name)) LIKE '%CAREMARK%'
+//       )`;
+
+//     const summaryCte = `
+//       WITH ${caremarkBinsCte},
+//       filtered AS (
+//         SELECT
+//           i.rx_number,
+//           i.ndc,
+//           LTRIM(UPPER(TRIM(COALESCE(i.primary_bin, ''))), '0') AS bin_norm,
+//           COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) AS amount
+//         FROM inventory_rows i
+//         WHERE i.audit_id = $1
+//           AND i.date_filled IS NOT NULL
+//           AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2
+//       )`;
+
+//     const ndcCte = `
+//       WITH ${caremarkBinsCte},
+//       filtered AS (
+//         SELECT
+//           i.rx_number,
+//           i.ndc,
+//           i.quantity,
+//           LTRIM(UPPER(TRIM(COALESCE(i.primary_bin, ''))), '0') AS bin_norm,
+//           COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) AS amount
+//         FROM inventory_rows i
+//         WHERE i.audit_id = $1
+//           AND i.date_filled IS NOT NULL
+//           AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2
+//       ),
+//       ws AS (
+//         SELECT
+//           LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0') AS ndc_normalized,
+//           SUM(wr.quantity) AS total_ordered
+//         FROM wholesaler_rows wr
+//         WHERE wr.audit_id = $1
+//           AND wr.invoice_date IS NOT NULL
+//           AND TO_CHAR(wr.invoice_date, 'YYYY-MM') = $2
+//         GROUP BY LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0')
+//       )`;
+
+//     const [summaryResult, ndcResult] = await Promise.all([
+//       pool.query(
+//         `${summaryCte}
+//         SELECT
+//           COUNT(DISTINCT f.rx_number)                                                                     AS total_claims,
+//           COALESCE(SUM(f.amount), 0)                                                                      AS total_amount,
+//           COUNT(DISTINCT CASE WHEN ab.ndc IS NOT NULL AND cb.bin_norm IS NOT NULL THEN f.rx_number END)   AS aberrant_claims,
+//           COALESCE(SUM(CASE WHEN ab.ndc IS NOT NULL AND cb.bin_norm IS NOT NULL THEN f.amount ELSE 0 END), 0) AS aberrant_amount
+//         FROM filtered f
+//         LEFT JOIN aberrant_ndcs ab
+//           ON ab.ndc = LPAD(REGEXP_REPLACE(f.ndc, '[^0-9]', '', 'g'), 11, '0')
+//         LEFT JOIN caremark_bins cb ON cb.bin_norm = f.bin_norm`,
+//         [id, month],
+//       ),
+//       pool.query(
+//         `${ndcCte}
+//         SELECT
+//           LPAD(REGEXP_REPLACE(f.ndc, '[^0-9]', '', 'g'), 11, '0')  AS ndc,
+//           ab.product_name                                            AS drug_name,
+//           COUNT(DISTINCT f.rx_number)                               AS rx_count,
+//           COALESCE(SUM(f.amount), 0)                                AS amount,
+//           COALESCE(SUM(f.quantity), 0)                              AS total_billed,
+//           COALESCE(MAX(ws.total_ordered), 0)                        AS total_ordered
+//         FROM filtered f
+//         INNER JOIN aberrant_ndcs ab
+//           ON ab.ndc = LPAD(REGEXP_REPLACE(f.ndc, '[^0-9]', '', 'g'), 11, '0')
+//         INNER JOIN caremark_bins cb ON cb.bin_norm = f.bin_norm
+//         LEFT JOIN ws
+//           ON ws.ndc_normalized = LPAD(REGEXP_REPLACE(f.ndc, '[^0-9]', '', 'g'), 11, '0')
+//         GROUP BY LPAD(REGEXP_REPLACE(f.ndc, '[^0-9]', '', 'g'), 11, '0'), ab.product_name
+//         ORDER BY rx_count DESC`,
+//         [id, month],
+//       ),
+//     ]);
+
+//     return res.json({
+//       summary: summaryResult.rows[0],
+//       ndcs: ndcResult.rows,
+//     });
+//   } catch (error) {
+//     console.error("Aberrant risk summary error:", error);
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
+
 export const getAberrantRiskSummary = async (req, res) => {
   try {
     const { id } = req.params;
@@ -928,12 +1244,35 @@ export const getAberrantRiskSummary = async (req, res) => {
         GROUP BY LPAD(REGEXP_REPLACE(wr.ndc, '[^0-9]', '', 'g'), 11, '0')
       )`;
 
+    console.log("[AberrantRisk] NEW CODE v2 — audit:", id, "month:", month);
+
+    // Debug: how many Caremark BINs exist + how many claims match them
+    const debugResult = await pool.query(
+      `WITH caremark_bins AS (
+         SELECT DISTINCT LTRIM(UPPER(TRIM(bin)), '0') AS bin_norm
+         FROM master_sheet WHERE UPPER(TRIM(pbm_name)) LIKE '%CAREMARK%'
+       )
+       SELECT
+         (SELECT COUNT(*) FROM caremark_bins) AS caremark_bin_count,
+         COUNT(i.rx_number) AS total_dec_rows,
+         COUNT(CASE WHEN cb.bin_norm IS NOT NULL THEN 1 END) AS caremark_matched_rows,
+         array_agg(DISTINCT LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))), '0')) FILTER (WHERE cb.bin_norm IS NOT NULL) AS matched_bins
+       FROM inventory_rows i
+       LEFT JOIN caremark_bins cb
+         ON cb.bin_norm = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))), '0')
+       WHERE i.audit_id = $1
+         AND i.date_filled IS NOT NULL
+         AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2`,
+      [id, month],
+    );
+    console.log("[AberrantRisk] debug:", JSON.stringify(debugResult.rows[0]));
+
     const [summaryResult, ndcResult] = await Promise.all([
       pool.query(
         `${summaryCte}
         SELECT
-          COUNT(DISTINCT f.rx_number)                                                                     AS total_claims,
-          COALESCE(SUM(f.amount), 0)                                                                      AS total_amount,
+          COUNT(DISTINCT CASE WHEN cb.bin_norm IS NOT NULL THEN f.rx_number END)                          AS total_claims,
+          COALESCE(SUM(CASE WHEN cb.bin_norm IS NOT NULL THEN f.amount ELSE 0 END), 0)                    AS total_amount,
           COUNT(DISTINCT CASE WHEN ab.ndc IS NOT NULL AND cb.bin_norm IS NOT NULL THEN f.rx_number END)   AS aberrant_claims,
           COALESCE(SUM(CASE WHEN ab.ndc IS NOT NULL AND cb.bin_norm IS NOT NULL THEN f.amount ELSE 0 END), 0) AS aberrant_amount
         FROM filtered f
@@ -962,6 +1301,11 @@ export const getAberrantRiskSummary = async (req, res) => {
         [id, month],
       ),
     ]);
+
+    console.log(
+      "[AberrantRisk] summary raw:",
+      JSON.stringify(summaryResult.rows[0]),
+    );
 
     return res.json({
       summary: summaryResult.rows[0],
