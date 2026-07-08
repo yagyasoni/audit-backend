@@ -194,8 +194,8 @@ router.post("/create-checkout-session", async (req, res) => {
       metadata: { userId: String(userId) },
       subscription_data,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "http://localhost:3000/Mainpage?payment=success",
-      cancel_url: "http://localhost:3000/cancel",
+      success_url: "https://www.auditprorx.com/Mainpage?payment=success",
+      cancel_url: "https://www.auditprorx.com/cancel",
     });
 
     return res.json({ url: session.url });
@@ -513,7 +513,7 @@ router.post("/update-subscription", async (req, res) => {
 
     const session = await stripe.billingPortal.sessions.create({
       customer: result.rows[0].stripe_customer_id,
-      return_url: "http://localhost:3000/settings",
+      return_url: "https://www.auditprorx.com/settings",
     });
 
     return res.json({ url: session.url });

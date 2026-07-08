@@ -245,10 +245,106 @@ const mapListingRow = (r) => ({
 //   }
 // };
 
+// export const getListings = async (req, res) => {
+//   try {
+//     // requireAdmin middleware already verified the admin token + set req.user.
+//     // Admin view returns EVERY listing — no expiry / TTL / active filtering.
+//     const result = await pool.query(
+//       `
+//       SELECT
+//         l.id, l.ndc, l.drug_name, l.strength, l.dosage_form, l.manufacturer,
+//         l.package_size, l.quantity, l.lot_number, l.expiry, l.acquisition_cost,
+//         l.reason_code, l.visibility,
+//         l.created_at AS listed_at,
+//         l.user_id AS owner_user_id,
+//         p.id AS pharmacy_id, p.pharmacy_name, p.address, p.phone, p.fax,
+//         p.npi_number, p.ncpdp_number, p.license_expiry_date,
+//         p.pharmacist_name, p.created_at AS pharmacy_member_since,
+//         u.email AS pharmacy_email
+//       FROM inventory_listings l
+//       LEFT JOIN pharmacy_details p ON p.id = l.pharmacy_id
+//       LEFT JOIN users u ON u.id = l.user_id
+//       ORDER BY l.created_at DESC
+//       `,
+//     );
+
+//     const listings = result.rows.map(mapListingRow);
+
+//     // Admin view has no "my listings" concept — keep the key for frontend
+//     // compatibility but it is always empty.
+//     return res.json({ listings, my_listings: [] });
+//   } catch (err) {
+//     if (err.status) return res.status(err.status).json({ error: err.message });
+//     console.error("getListings error:", err);
+//     return res.status(500).json({ error: err.message });
+//   }
+// };
+
 export const getListings = async (req, res) => {
   try {
-    // requireAdmin middleware already verified the admin token + set req.user.
-    // Admin view returns EVERY listing — no expiry / TTL / active filtering.
+    const userId = requireUser(req);
+    const myPharmacyId = await getUserPharmacyId(userId);
+    const { group_id } = req.query; // NEW: optional filter
+
+    let memberGroupIds = [];
+    if (myPharmacyId) {
+      const groupsRes = await pool.query(
+        `SELECT m.group_id 
+         FROM inventory_group_members m
+         JOIN inventory_groups g ON g.id = m.group_id
+         WHERE m.pharmacy_id = $1 AND g.is_active = true`,
+        [myPharmacyId],
+      );
+      memberGroupIds = groupsRes.rows.map((g) => g.group_id);
+    }
+
+    // If group_id is provided, validate the user is a member of that group
+    if (group_id) {
+      if (!memberGroupIds.includes(group_id)) {
+        return res.status(403).json({ error: "Not a member of that group" });
+      }
+    }
+
+    let whereClause;
+    let queryParams;
+
+    if (group_id) {
+      // Filter to listings shared with this specific group
+      whereClause = `
+        AND (
+          l.user_id = $1
+          OR EXISTS (
+            SELECT 1 FROM inventory_listing_groups lg
+            WHERE lg.listing_id = l.id AND lg.group_id = $2::uuid
+          )
+        )
+      `;
+      queryParams = [userId, group_id];
+    } else {
+      // Default: own listings (by user or pharmacy) + public + groups_only
+      // (where I'm a member)
+      whereClause = `
+        AND (
+          l.user_id = $1
+          OR ($3::uuid IS NOT NULL AND l.pharmacy_id = $3::uuid)
+          OR l.visibility = 'public'
+          OR (
+            l.visibility = 'groups_only'
+            AND EXISTS (
+              SELECT 1 FROM inventory_listing_groups lg
+              WHERE lg.listing_id = l.id
+                AND lg.group_id = ANY($2::uuid[])
+            )
+          )
+        )
+      `;
+      queryParams = [
+        userId,
+        memberGroupIds.length ? memberGroupIds : [null],
+        myPharmacyId,
+      ];
+    }
+
     const result = await pool.query(
       `
       SELECT
@@ -260,19 +356,35 @@ export const getListings = async (req, res) => {
         p.id AS pharmacy_id, p.pharmacy_name, p.address, p.phone, p.fax,
         p.npi_number, p.ncpdp_number, p.license_expiry_date,
         p.pharmacist_name, p.created_at AS pharmacy_member_since,
-        u.email AS pharmacy_email
+        u.email AS pharmacy_email,
+        COALESCE(
+          ARRAY(SELECT group_id FROM inventory_listing_groups WHERE listing_id = l.id),
+          ARRAY[]::uuid[]
+        ) AS group_ids
       FROM inventory_listings l
       LEFT JOIN pharmacy_details p ON p.id = l.pharmacy_id
       LEFT JOIN users u ON u.id = l.user_id
+      WHERE l.is_active = true
+        AND (l.auto_expires_at IS NULL OR l.auto_expires_at > NOW())
+        ${whereClause}
       ORDER BY l.created_at DESC
       `,
+      queryParams,
     );
 
-    const listings = result.rows.map(mapListingRow);
+    const all = result.rows.map(mapListingRow);
+    // "My Listings" = my pharmacy's listings (fallback to creator id). Pharmacy-
+    // based ownership is robust when a listing's user_id differs from the viewing
+    // session id (e.g. multiple users share a pharmacy).
+    const isMine = (l) =>
+      (myPharmacyId && l.pharmacy?.id === myPharmacyId) ||
+      l.owner_user_id === userId;
+    // Search Network shows every visible listing (including my own);
+    // My Listings shows only my pharmacy's listings.
+    const listings = all;
+    const my_listings = all.filter((l) => isMine(l));
 
-    // Admin view has no "my listings" concept — keep the key for frontend
-    // compatibility but it is always empty.
-    return res.json({ listings, my_listings: [] });
+    return res.json({ listings, my_listings });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getListings error:", err);
