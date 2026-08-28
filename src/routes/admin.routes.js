@@ -5,8 +5,9 @@
 import express from "express";
 import { pool } from "../config/db.js"; // same db.js your other routes use
 import { Resend } from "resend";
-import jwt from "jsonwebtoken";
+// import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import { requireAdmin, requireAuth } from "../middleware/auth.js";
 
 const feedbackEmailTemplate = (feedback) => `
 <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
@@ -60,25 +61,11 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
 
-function requireAdmin(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token)
-    return res.status(401).json({ success: false, message: "Missing token" });
-
-  try {
-    req.admin = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
-    next();
-  } catch {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid or expired admin token" });
-  }
-}
-
-// Gate everything below, EXCEPT client-facing feedback submission
 router.use((req, res, next) => {
-  if (req.method === "POST" && req.path === "/feedbacks") return next();
+  if (req.method === "POST" && req.path === "/feedbacks") {
+    return requireAuth(req, res, next);
+  }
+
   return requireAdmin(req, res, next);
 });
 

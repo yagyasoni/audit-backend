@@ -2,6 +2,8 @@ import * as auditService from "../services/audit.service.js";
 import { pool } from "../config/db.js";
 // import { createAudit, updateAuditDates, saveInventoryFile, saveWholesalerFiles } from "../services/audit.service.js";
 import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
 
 export const createAudit = async (req, res) => {
   try {
@@ -708,6 +710,66 @@ export const getWholesalerFiles = async (req, res) => {
   } catch (err) {
     console.error("Get wholesaler files error:", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+export const deleteWholesalerFile = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const name = (req.query.name || req.body?.wholesaler_name || "").trim();
+
+    if (!name) {
+      return res
+        .status(400)
+        .json({ error: "wholesaler_name (query param 'name') is required" });
+    }
+
+    await client.query("BEGIN");
+
+    const existingFiles = await client.query(
+      `SELECT id, file_name
+         FROM wholesaler_files
+        WHERE audit_id = $1
+          AND wholesaler_name = $2`,
+      [id, name],
+    );
+
+    for (const file of existingFiles.rows) {
+      // 1) delete child rows for this specific file
+      await client.query(
+        `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
+        [file.id],
+      );
+      // 2) delete the file record
+      await client.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
+        file.id,
+      ]);
+      // 3) remove the physical file from disk (best effort)
+      const filePath = path.join(
+        process.cwd(),
+        "uploads/wholesalers",
+        file.file_name,
+      );
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (e) {
+        console.warn(
+          "Failed to delete wholesaler file from disk:",
+          filePath,
+          e.message,
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({ success: true, deleted: existingFiles.rows.length });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("Delete wholesaler file error:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 };
 

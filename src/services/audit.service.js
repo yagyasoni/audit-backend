@@ -822,9 +822,7 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             mapping.quantity &&
             row[mapping.quantity] !== undefined &&
             row[mapping.quantity] !== ""
-              ? parseInt(
-                  String(row[mapping.quantity]).replace(/[^0-9-]/g, ""),
-                ) || 0
+              ? (cleanInt(row[mapping.quantity]) ?? 0)
               : null;
           const unitCost =
             mapping.unitPrice && row[mapping.unitPrice]
@@ -885,6 +883,209 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
   return results;
 };
+
+// export const saveWholesalerFiles = async (auditId, filesArray) => {
+//   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
+//     auditId,
+//   ]);
+//   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
+
+//   // ❌ REMOVED: the old blanket delete that wiped EVERY wholesaler file
+//   //    for this audit before each upload. That destroyed previously-uploaded
+//   //    files whenever the user uploaded a new batch.
+//   //
+//   //    await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [auditId]);
+//   //    await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [auditId]);
+//   //
+//   // ✅ NEW: per-wholesaler replace. Each wholesaler being uploaded clears
+//   //    ONLY its own previous file/rows, leaving every other wholesaler
+//   //    on this audit untouched.
+
+//   const results = [];
+
+//   for (const fileObj of filesArray) {
+//     // ── Per-wholesaler cleanup (replace just this wholesaler) ──
+//     const existingFiles = await pool.query(
+//       `SELECT id, file_name
+//          FROM wholesaler_files
+//         WHERE audit_id = $1
+//           AND wholesaler_name = $2`,
+//       [auditId, fileObj.wholesaler_name],
+//     );
+
+//     for (const oldFile of existingFiles.rows) {
+//       // 1) delete child rows for this specific file
+//       await pool.query(
+//         `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
+//         [oldFile.id],
+//       );
+//       // 2) delete the file record
+//       await pool.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
+//         oldFile.id,
+//       ]);
+//       // 3) remove the physical file from disk
+//       const oldPath = path.join(
+//         process.cwd(),
+//         "uploads/wholesalers",
+//         oldFile.file_name,
+//       );
+//       try {
+//         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+//       } catch (e) {
+//         console.warn(
+//           "Failed to delete old wholesaler file:",
+//           oldPath,
+//           e.message,
+//         );
+//       }
+//     }
+
+//     // ── Insert the new file record ──
+//     const fileInsert = await pool.query(
+//       `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
+//        VALUES ($1, $2, $3) RETURNING *`,
+//       [auditId, fileObj.wholesaler_name, fileObj.file_name],
+//     );
+
+//     const wholesalerFileId = fileInsert.rows[0].id;
+
+//     const filePath = path.join(
+//       process.cwd(),
+//       "uploads/wholesalers",
+//       fileObj.file_name,
+//     );
+//     if (!fs.existsSync(filePath)) {
+//       console.warn("Wholesaler file not found:", filePath);
+//       results.push(fileInsert.rows[0]);
+//       continue;
+//     }
+
+//     const content = fs.readFileSync(filePath, "utf-8");
+//     const records = parse(content, {
+//       columns: true,
+//       skip_empty_lines: true,
+//       trim: true,
+//     });
+
+//     const mapping = fileObj.headerMapping || {};
+//     console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
+//     if (records.length > 0) {
+//       const testInvoice = mapping.invoiceDate
+//         ? records[0][mapping.invoiceDate]
+//         : "NO_MAPPING_KEY";
+//       console.log("INVOICE DATE DEBUG:", {
+//         mappingKey: mapping.invoiceDate,
+//         rawValue: testInvoice,
+//         cleaned: mapping.invoiceDate
+//           ? cleanDate(records[0][mapping.invoiceDate])
+//           : null,
+//         csvHeaders: Object.keys(records[0]),
+//       });
+//     }
+//     console.log(
+//       "SAMPLE ROW KEYS:",
+//       records.length > 0 ? Object.keys(records[0]) : [],
+//     );
+//     console.log(
+//       "SAMPLE ROW:",
+//       records.length > 0 ? JSON.stringify(records[0]) : "empty",
+//     );
+
+//     if (records.length === 0) {
+//       results.push(fileInsert.rows[0]);
+//       continue;
+//     }
+
+//     // ── BULK INSERT wholesaler rows in chunks (unchanged) ──
+//     const CHUNK_SIZE = 1000;
+//     const client = await pool.connect();
+
+//     try {
+//       await client.query("BEGIN");
+
+//       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+//         const chunk = records.slice(i, i + CHUNK_SIZE);
+//         const values = [];
+
+//         const placeholders = chunk.map((row, idx) => {
+//           const base = idx * 8;
+
+//           const ndc = mapping.ndcNumber
+//             ? (row[mapping.ndcNumber] ?? null)
+//             : null;
+//           const invoiceDate = mapping.invoiceDate
+//             ? (row[mapping.invoiceDate] ?? null)
+//             : null;
+//           const productName = mapping.itemDescription
+//             ? (row[mapping.itemDescription] ?? null)
+//             : null;
+//           const quantity =
+//             mapping.quantity &&
+//             row[mapping.quantity] !== undefined &&
+//             row[mapping.quantity] !== ""
+//               ? parseInt(
+//                   String(row[mapping.quantity]).replace(/[^0-9-]/g, ""),
+//                 ) || 0
+//               : null;
+//           const unitCost =
+//             mapping.unitPrice && row[mapping.unitPrice]
+//               ? parseFloat(
+//                   String(row[mapping.unitPrice]).replace(/[^0-9.]/g, ""),
+//                 )
+//               : null;
+//           const totalCost =
+//             mapping.totalPrice && row[mapping.totalPrice]
+//               ? parseFloat(
+//                   String(row[mapping.totalPrice]).replace(/[^0-9.]/g, ""),
+//                 )
+//               : null;
+
+//           values.push(
+//             auditId,
+//             wholesalerFileId,
+//             ndc,
+//             productName,
+//             quantity,
+//             unitCost,
+//             totalCost,
+//             cleanDate(invoiceDate),
+//           );
+
+//           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
+//         });
+
+//         await client.query(
+//           `INSERT INTO wholesaler_rows
+//              (audit_id, wholesaler_file_id, ndc, product_name, quantity, unit_cost, total_cost, invoice_date)
+//            VALUES ${placeholders.join(",")}`,
+//           values,
+//         );
+
+//         console.log(
+//           `✅ Wholesaler chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(
+//             records.length / CHUNK_SIZE,
+//           )} inserted for ${fileObj.wholesaler_name}`,
+//         );
+//       }
+
+//       await client.query("COMMIT");
+//       console.log(
+//         `✅ All ${records.length} wholesaler rows inserted for ${fileObj.wholesaler_name}`,
+//       );
+//     } catch (err) {
+//       await client.query("ROLLBACK");
+//       throw err;
+//     } finally {
+//       client.release();
+//     }
+
+//     results.push(fileInsert.rows[0]);
+//   }
+
+//   await refreshAuditStatus(auditId);
+
+//   return results;
+// };
 
 export const getAudits = async (userId) => {
   const result = await pool.query(
@@ -1168,18 +1369,18 @@ export const getCommunityDataGlobal = async (
 
   const groupFields = includeGroups
     ? `
-      LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0') AS bin,
+      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
       TRIM(i.primary_pcn) AS pcn,
       COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP') AS grp
     `
     : `
-      LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0') AS bin,
+      LPAD(TRIM(i.primary_bin), 6, '0') AS bin,
       TRIM(i.primary_pcn) AS pcn
     `;
 
   const groupBy = includeGroups
-    ? `LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0'), TRIM(i.primary_pcn), COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP')`
-    : `LTRIM(LPAD(TRIM(i.primary_bin), 6, '0'), '0'), TRIM(i.primary_pcn)`;
+    ? `LPAD(TRIM(i.primary_bin), 6, '0'), TRIM(i.primary_pcn), COALESCE(NULLIF(TRIM(i.primary_group), ''), 'NO_GROUP')`
+    : `LPAD(TRIM(i.primary_bin), 6, '0'), TRIM(i.primary_pcn)`;
 
   let params = [normalizedNdc];
   let paramIndex = 2;

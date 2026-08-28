@@ -7,6 +7,7 @@ import { Resend } from "resend";
 import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
 import multer from "multer";
+import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -20,27 +21,27 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-const requireAdmin = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+// const requireAdmin = (req, res, next) => {
+//   const authHeader = req.headers.authorization;
 
-  if (!authHeader) {
-    return res.status(401).json({ message: "Authorization header missing" });
-  }
+//   if (!authHeader) {
+//     return res.status(401).json({ message: "Authorization header missing" });
+//   }
 
-  try {
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
+//   try {
+//     const token = authHeader.split(" ")[1];
+//     const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
 
-    if (decoded.role !== "admin") {
-      return res.status(403).json({ message: "Admin access only" });
-    }
+//     if (decoded.role !== "admin") {
+//       return res.status(403).json({ message: "Admin access only" });
+//     }
 
-    req.user = decoded;
-    next();
-  } catch {
-    return res.status(401).json({ message: "Invalid or expired token" });
-  }
-};
+//     req.user = decoded;
+//     next();
+//   } catch {
+//     return res.status(401).json({ message: "Invalid or expired token" });
+//   }
+// };
 
 router.post("/register", async (req, res) => {
   try {
@@ -225,18 +226,18 @@ router.post("/login", async (req, res) => {
     const accessToken = jwt.sign(
       { userId: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: "3h" },
     );
 
     const refreshToken = jwt.sign(
       { userId: user.id },
       process.env.JWT_REFRESH_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "1d" },
     );
 
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1,$2,NOW() + INTERVAL '7 days')`,
+       VALUES ($1,$2,NOW() + INTERVAL '1 day')`,
       [user.id, refreshToken],
     );
 
@@ -1203,14 +1204,14 @@ router.post("/refresh-token", async (req, res) => {
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: decoded.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: "1d" },
     );
 
     // Rotate refresh token — delete old, insert new
     const newRefreshToken = jwt.sign(
       { userId: decoded.userId },
       process.env.JWT_REFRESH_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "1d" },
     );
 
     await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
@@ -1219,7 +1220,7 @@ router.post("/refresh-token", async (req, res) => {
 
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+       VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
       [decoded.userId, newRefreshToken],
     );
 
@@ -1264,12 +1265,12 @@ router.post("/admin/refresh-token", async (req, res) => {
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: "admin" },
       process.env.ADMIN_JWT_SECRET,
-      { expiresIn: "1d" },
+      { expiresIn: "3h" },
     );
     const newRefreshToken = jwt.sign(
       { userId: decoded.userId, role: "admin" },
       process.env.ADMIN_JWT_REFRESH_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "12h" },
     );
 
     await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
@@ -1277,7 +1278,7 @@ router.post("/admin/refresh-token", async (req, res) => {
     ]);
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+       VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
       [decoded.userId, newRefreshToken],
     );
 
@@ -1340,18 +1341,18 @@ router.post("/admin/verify-otp", async (req, res) => {
     const accessToken = jwt.sign(
       { userId: user.id, role: "admin" },
       process.env.ADMIN_JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: "3h" },
     );
 
     const refreshToken = jwt.sign(
       { userId: user.id, role: "admin" },
       process.env.ADMIN_JWT_REFRESH_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "12h" },
     );
 
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+       VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
       [user.id, refreshToken],
     );
 
@@ -1374,12 +1375,48 @@ router.get("/admin/dashboard", requireAdmin, (req, res) => {
 // ── ROUTE 1: GET /auth/users
 // Fetches all registered users for the admin dashboard list
 // ─────────────────────────────────────────────────────────────
-router.get("/users", async (req, res) => {
+// router.get("/users", requireAnyAuth, async (req, res) => {
+//   try {
+//     const result = await pool.query(
+//       `SELECT id, name, email, phone, created_at AS "createdAt",status
+//        FROM users
+//        ORDER BY created_at DESC`,
+//     );
+//     res.status(200).json(result.rows);
+//   } catch (error) {
+//     console.error("Error fetching users:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+router.get("/users", requireAnyAuth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, email, phone, created_at AS "createdAt",status
-       FROM users
-       ORDER BY created_at DESC`,
+      `SELECT
+         u.id,
+         u.name,
+         u.email,
+         u.phone,
+         u.status,
+         u.created_at     AS "createdAt",
+         pd.pharmacy_name           AS "pharmacyName",
+         pd.pharmacy_license_number AS "pharmacyLicenseNumber",
+         pd.license_expiry_date     AS "licenseExpiryDate",
+         pd.dea_number              AS "deaNumber",
+         pd.dea_expiry_date         AS "deaExpiryDate"
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT
+           pharmacy_name,
+           pharmacy_license_number,
+           license_expiry_date,
+           dea_number,
+           dea_expiry_date
+         FROM pharmacy_details
+         WHERE user_id = u.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) pd ON true
+       ORDER BY u.created_at DESC`,
     );
     res.status(200).json(result.rows);
   } catch (error) {
@@ -1387,12 +1424,13 @@ router.get("/users", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 // ── ROUTE 2: POST /auth/impersonate
 // Admin clicks "View as Pharmacy" → this generates a real
 // accessToken + refreshToken for that user → frontend stores
 // them and redirects directly to /Mainpage. No login needed.
 // ─────────────────────────────────────────────────────────────
-router.post("/impersonate", async (req, res) => {
+router.post("/impersonate", requireAdmin, async (req, res) => {
   try {
     const { userId } = req.body;
 
@@ -1418,19 +1456,19 @@ router.post("/impersonate", async (req, res) => {
     const accessToken = jwt.sign(
       { userId: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" },
+      { expiresIn: "3h" },
     );
 
     const refreshToken = jwt.sign(
       { userId: user.id },
       process.env.JWT_REFRESH_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "1d" },
     );
 
     // Store refresh token in DB
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+       VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
       [user.id, refreshToken],
     );
 
@@ -1444,77 +1482,6 @@ router.post("/impersonate", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// PUT /auth/user-status/:id
-// router.put("/user-status/:id", async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { status } = req.body;
-
-//     // Validate input
-//     if (!["active", "inactive"].includes(status)) {
-//       return res.status(400).json({
-//         message: "Invalid status value",
-//       });
-//     }
-
-//     const result = await pool.query(
-//       `UPDATE users
-//        SET status = $1
-//        WHERE id = $2
-//        RETURNING id, name, email, status`,
-//       [status, id],
-//     );
-
-//     if (result.rows.length === 0) {
-//       return res.status(404).json({
-//         message: "User not found",
-//       });
-//     }
-
-//     await resend.emails.send({
-//       from: process.env.EMAIL_FROM,
-//       to: result.rows[0].email,
-//       subject: "Admin Login OTP (Resent)",
-//       html: `
-// <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
-//   <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
-
-//     <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
-//       Admin Login OTP
-//     </div>
-
-//     <div style="padding:24px; color:#1f2937;">
-//       <p>Your new admin login OTP is:</p>
-
-//       <div style="text-align:center; margin:24px 0;">
-//         <span style="font-size:28px; font-weight:bold; letter-spacing:4px; color:#0f172a;">
-//           ${otp}
-//         </span>
-//       </div>
-
-//       <p>This OTP will expire in 5 minutes.</p>
-//       <p>If you did not request this, please ignore this email.</p>
-//     </div>
-
-//     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
-//       © 2026 AuditProRx. All rights reserved.<br/>
-//       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
-//     </div>
-
-//   </div>
-// </div>`,
-//     });
-
-//     res.status(200).json({
-//       message: `User ${status} successfully`,
-//       user: result.rows[0],
-//     });
-//   } catch (error) {
-//     console.error("Status update error:", error);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
 
 router.put("/user-status/:id", requireAdmin, async (req, res) => {
   try {

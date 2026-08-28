@@ -23,6 +23,7 @@ import {
   getDrugLookupLanding,
   searchNdcSuggestions,
   getAberrantRiskSummary,
+  deleteWholesalerFile,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -90,6 +91,7 @@ router.delete("/:id", deleteAudit);
 router.put("/:id/dates", updateAuditDates);
 
 router.get("/:id/drug-detail/:ndc", getDrugWholesalerDetail);
+router.delete("/:id/wholesalers", deleteWholesalerFile);
 router.get("/:id/inventory-detail/:ndc", getInventoryDetail);
 router.get("/:id/wholesaler-detail/:ndc", getWholesalerDetail);
 router.get("/community/:ndc", getCommunityData);

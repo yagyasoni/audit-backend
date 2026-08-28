@@ -1,6 +1,7 @@
 import express from "express";
 import Stripe from "stripe";
 import { pool } from "../config/db.js";
+import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -78,7 +79,7 @@ async function validateTrialCode(code, userId) {
 // Lets the pricing page show "✓ 14-day trial applied" before checkout.
 // =========================================
 
-router.post("/validate-trial-code", async (req, res) => {
+router.post("/validate-trial-code", requireAnyAuth, async (req, res) => {
   try {
     const { userId, code } = req.body;
     if (!userId || !code)
@@ -105,7 +106,7 @@ router.post("/validate-trial-code", async (req, res) => {
 // No code → billed from day one.
 // =========================================
 
-router.post("/create-checkout-session", async (req, res) => {
+router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
   try {
     const {
       userId,
@@ -216,7 +217,7 @@ router.post("/create-checkout-session", async (req, res) => {
 // downgrade branch.
 // =========================================
 
-router.post("/update-subscription-plans", async (req, res) => {
+router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
   try {
     const { userId, plan } = req.body;
 
@@ -365,7 +366,7 @@ router.post("/update-subscription-plans", async (req, res) => {
 //  Paid     → cancel at period end (access until then)
 // =========================================
 
-router.post("/cancel-subscription", async (req, res) => {
+router.post("/cancel-subscription", requireAnyAuth, async (req, res) => {
   try {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -391,26 +392,61 @@ router.post("/cancel-subscription", async (req, res) => {
     // NOTE: trial_code is intentionally NOT cleared — it stays as the
     // permanent "this user already used a trial" marker.
 
+    // if (subscription.status === "trialing") {
+    //   await stripe.subscriptions.cancel(stripeSubscriptionId);
+
+    //   await pool.query(
+    //     `UPDATE subscriptions
+    //      SET status='canceled', subscription_type='none', cancel_at_period_end=false,
+    //          inventory_reports_access=false, inventory_view_access=false,
+    //          drug_lookup_access=false, leads_access=false, full_access=false,
+    //          active_price_ids=ARRAY[]::TEXT[], trial_end=NULL, grace_period_end=NULL,
+    //          updated_at=NOW()
+    //      WHERE user_id = $1`,
+    //     [userId],
+    //   );
+
+    //   console.log(`🚫 Trial canceled immediately for user ${userId}`);
+
+    //   return res.json({
+    //     success: true,
+    //     type: "immediate",
+    //     message: "Trial canceled. You have not been charged.",
+    //   });
+    // }
+
     if (subscription.status === "trialing") {
-      await stripe.subscriptions.cancel(stripeSubscriptionId);
+      // Don't kill the trial now — let it run to trial_end, then Stripe stops
+      // it instead of charging. cancel_at_period_end works on a trialing sub too.
+      const updatedTrial = await stripe.subscriptions.update(
+        stripeSubscriptionId,
+        { cancel_at_period_end: true },
+      );
+
+      // For a trial, the "period end" IS the trial end date.
+      const trialCutoff =
+        updatedTrial.trial_end ??
+        updatedTrial.current_period_end ??
+        updatedTrial.items?.data?.[0]?.current_period_end;
 
       await pool.query(
         `UPDATE subscriptions
-         SET status='canceled', subscription_type='none', cancel_at_period_end=false,
-             inventory_reports_access=false, inventory_view_access=false,
-             drug_lookup_access=false, leads_access=false, full_access=false,
-             active_price_ids=ARRAY[]::TEXT[], trial_end=NULL, grace_period_end=NULL,
+         SET cancel_at_period_end=true,
+             grace_period_end=to_timestamp($1),
              updated_at=NOW()
-         WHERE user_id = $1`,
-        [userId],
+         WHERE user_id = $2`,
+        [trialCutoff, userId],
       );
 
-      console.log(`🚫 Trial canceled immediately for user ${userId}`);
+      console.log(`⏰ Trial cancel scheduled at trial end for user ${userId}`);
 
       return res.json({
         success: true,
-        type: "immediate",
-        message: "Trial canceled. You have not been charged.",
+        type: "at_period_end",
+        grace_period_end: new Date(trialCutoff * 1000),
+        message: `Trial canceled. Access continues until ${new Date(
+          trialCutoff * 1000,
+        ).toLocaleDateString()}, and you won't be charged.`,
       });
     }
 
@@ -450,7 +486,7 @@ router.post("/cancel-subscription", async (req, res) => {
 // REACTIVATE SUBSCRIPTION (undo a pending cancel)
 // =========================================
 
-router.post("/reactivate-subscription", async (req, res) => {
+router.post("/reactivate-subscription", requireAnyAuth, async (req, res) => {
   try {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -499,7 +535,7 @@ router.post("/reactivate-subscription", async (req, res) => {
 // BILLING PORTAL
 // =========================================
 
-router.post("/update-subscription", async (req, res) => {
+router.post("/update-subscription", requireAnyAuth, async (req, res) => {
   try {
     const { userId } = req.body;
 
@@ -530,7 +566,7 @@ router.post("/update-subscription", async (req, res) => {
 // UI shows a real plan label instead of null.
 // =========================================
 
-router.post("/admin/grant-access", async (req, res) => {
+router.post("/admin/grant-access", requireAdmin, async (req, res) => {
   try {
     const {
       userId,
@@ -601,7 +637,7 @@ router.post("/admin/grant-access", async (req, res) => {
 // GET SUBSCRIPTION (DB)
 // =========================================
 
-router.get("/subscription/:userId", async (req, res) => {
+router.get("/subscription/:userId", requireAnyAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await pool.query(
@@ -619,7 +655,7 @@ router.get("/subscription/:userId", async (req, res) => {
 // GET LIVE STRIPE SUBSCRIPTION DETAILS
 // =========================================
 
-router.get("/stripe-subscription/:userId", async (req, res) => {
+router.get("/stripe-subscription/:userId", requireAnyAuth, async (req, res) => {
   try {
     const { userId } = req.params;
 
