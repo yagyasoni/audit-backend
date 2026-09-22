@@ -11,7 +11,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // PLAN MAP — 3 fixed tiers, no add-ons
 // base        → $99  /mo → inventory_reports_access
 // professional→ $249 /mo → inventory_reports_access + inventory_view_access
-// full_access → $499 /mo → all access
+// full_access → $399 /mo → all access
 // =========================================
 
 const PRICE_MAP = {
@@ -688,13 +688,13 @@ router.get("/stripe-subscription/:userId", requireAnyAuth, async (req, res) => {
       const adminLabels = {
         base: "Base — Inventory Reports ($99/mo)",
         professional: "Professional ($249/mo)",
-        full_access: "Complete Suite ($499/mo)",
+        full_access: "Complete Suite ($399/mo)",
         none: "Admin Access",
       };
       const adminAmounts = {
         base: 9900,
         professional: 24900,
-        full_access: 49900,
+        full_access: 39900,
         none: 0,
       };
 
@@ -752,7 +752,7 @@ router.get("/stripe-subscription/:userId", requireAnyAuth, async (req, res) => {
       base: "Base — Inventory Reports ($99/mo)",
       professional:
         "Professional — Inventory Reports + Inventory View ($249/mo)",
-      full_access: "Complete Suite ($499/mo)",
+      full_access: "Complete Suite ($399/mo)",
     };
 
     const formatPlanName = (plans) =>

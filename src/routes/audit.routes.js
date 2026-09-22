@@ -24,6 +24,8 @@ import {
   searchNdcSuggestions,
   getAberrantRiskSummary,
   deleteWholesalerFile,
+   serveInventoryFile,
+  serveWholesalerFile,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -83,6 +85,11 @@ router.get("/:id/aberrant-summary", getAberrantRiskSummary);
 router.get("/:id/inventory-files", getInventoryFiles);
 router.get("/:id/wholesaler-files", getWholesalerFiles);
 
+// Serve a stored upload back: ?mode=preview → JSON rows, otherwise a CSV download.
+// Keyed by audit id / wholesaler name rather than a file row id, because a
+// re-upload replaces the row and would invalidate any id the client held.
+router.get("/:id/inventory-file/content", serveInventoryFile);
+router.get("/:id/wholesaler-file/content", serveWholesalerFile);
 // ============================
 // DELETE
 // ============================

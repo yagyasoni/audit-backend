@@ -79,7 +79,6 @@ export async function normalizeInventoryCSV(inputPath, headerMapping) {
           }
         }
 
-        console.log("Sample dbRow:", JSON.stringify(dbRow));
         rows.push(dbRow);
       })
       .on("end", () => {

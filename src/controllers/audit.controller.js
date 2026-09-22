@@ -4,6 +4,7 @@ import { pool } from "../config/db.js";
 import jwt from "jsonwebtoken";
 import fs from "fs";
 import path from "path";
+import { parse } from "csv-parse/sync";
 
 export const createAudit = async (req, res) => {
   try {
@@ -35,16 +36,54 @@ export const createAudit = async (req, res) => {
 
     res.status(201).json(audit);
   } catch (error) {
-    if (
-      error.name === "TokenExpiredError" ||
-      error.name === "JsonWebTokenError"
-    ) {
+    if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError") {
       return res.status(401).json({ message: "Token expired or invalid" });
     }
     console.error("Create Audit Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+// export const createAudit = async (req, res) => {
+//   try {
+//     const { name } = req.body;
+
+//     if (!name || name.trim() === "") {
+//       return res.status(400).json({
+//         error: "Report name is required",
+//       });
+//     }
+
+//     const authHeader = req.headers.authorization;
+
+//     if (!authHeader) {
+//       return res.status(401).json({ message: "Authorization header missing" });
+//     }
+
+//     const token = authHeader.split(" ")[1];
+
+//     if (!token) {
+//       return res.status(401).json({ message: "Token missing" });
+//     }
+
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+//     const userId = decoded.userId;
+
+//     const audit = await auditService.createAudit(name, userId);
+
+//     res.status(201).json(audit);
+//   } catch (error) {
+//     if (
+//       error.name === "TokenExpiredError" ||
+//       error.name === "JsonWebTokenError"
+//     ) {
+//       return res.status(401).json({ message: "Token expired or invalid" });
+//     }
+//     console.error("Create Audit Error:", error);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// };
 
 // export const getFullReport = async (req, res) => {
 //   try {
@@ -703,15 +742,182 @@ export const getWholesalerFiles = async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      `SELECT id, wholesaler_name, file_name FROM wholesaler_files WHERE audit_id = $1 ORDER BY id DESC`,
-      [id],
-    );
+  `SELECT id, wholesaler_name, file_name FROM wholesaler_files WHERE audit_id = $1 ORDER BY uploaded_at DESC`,
+  [id]
+);
     res.json(result.rows);
   } catch (err) {
     console.error("Get wholesaler files error:", err);
     res.status(500).json({ error: err.message });
   }
 };
+
+// ── Serving stored upload CSVs back to the client ──────────────────────────
+// The originals are kept on disk by multer (uploads/inventory, uploads/wholesalers)
+// and the DB holds the exact basename, so Preview/Download serve the real file
+// rather than a CSV rebuilt from parsed rows.
+
+const PREVIEW_BYTES = 256 * 1024; // read at most this much for a preview
+const PREVIEW_MAX_ROWS = 100;
+
+// Strips multer's `Date.now() + "-"` prefix for a friendlier download name.
+const prettyUploadName = (fileName) => fileName.replace(/^\d+-/, "");
+
+const readFileSlice = (filePath, endByte) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    fs.createReadStream(filePath, { start: 0, end: endByte })
+      .on("data", (chunk) => chunks.push(chunk))
+      .on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
+      .on("error", reject);
+  });
+
+// Shared by both file types. `fileName` always comes from the DB, never the URL.
+const sendStoredCsv = async (res, { subdir, fileName, mode }) => {
+  // Guard against a traversal sequence ever reaching path.join.
+  const safeName = path.basename(fileName);
+  const filePath = path.join(process.cwd(), subdir, safeName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({
+      code: "FILE_MISSING",
+      message: "The uploaded file is no longer available on the server.",
+    });
+  }
+
+  const stat = fs.statSync(filePath);
+
+  if (mode === "preview") {
+    const slice = await readFileSlice(
+      filePath,
+      Math.min(PREVIEW_BYTES, stat.size) - 1,
+    );
+
+    // A byte-capped read can end mid-line; drop the trailing partial record.
+    const truncatedByBytes = stat.size > PREVIEW_BYTES;
+    const text = truncatedByBytes
+      ? slice.slice(0, slice.lastIndexOf("\n") + 1)
+      : slice;
+
+    // relax_quotes matters: inch marks in drug names (e.g. 4"X4.75") are common
+    // in these exports and would otherwise abort the parse.
+    const records = parse(text, {
+      relax_quotes: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+
+    const [headers = [], ...dataRows] = records;
+    const rows = dataRows.slice(0, PREVIEW_MAX_ROWS);
+
+    return res.json({
+      fileName: prettyUploadName(safeName),
+      headers,
+      rows,
+      truncated: truncatedByBytes || dataRows.length > rows.length,
+      sizeBytes: stat.size,
+    });
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${prettyUploadName(safeName)}"`,
+  );
+  res.setHeader("Content-Length", stat.size);
+  fs.createReadStream(filePath).pipe(res);
+};
+
+export const serveInventoryFile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Resolved by audit id, not by a row id: re-uploading replaces the row
+    // (delete + insert), so any id the client cached would already be dead.
+    // An audit only ever keeps one inventory file.
+    const result = await pool.query(
+      `SELECT file_name FROM audit_inventory_files
+        WHERE audit_id = $1
+        ORDER BY uploaded_at DESC
+        LIMIT 1`,
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "File not found" });
+    }
+
+    await sendStoredCsv(res, {
+      subdir: "uploads/inventory",
+      fileName: result.rows[0].file_name,
+      mode: req.query.mode === "preview" ? "preview" : "download",
+    });
+  } catch (err) {
+    // 22P02 = malformed uuid in the URL; treat as not-found rather than
+    // echoing the raw Postgres error back to the caller.
+    if (err.code === "22P02") {
+      return res.status(404).json({ code: "NOT_FOUND", message: "File not found" });
+    }
+    console.error("Serve inventory file error:", err);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+};
+
+export const serveWholesalerFile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const name = (req.query.name || "").trim();
+
+    if (!name) {
+      return res
+        .status(400)
+        .json({ error: "wholesaler_name (query param 'name') is required" });
+    }
+
+    // Keyed on the supplier name — the stable identifier the UI already matches
+    // on — because re-uploading mints a new row id for the same supplier.
+    const result = await pool.query(
+      `SELECT file_name FROM wholesaler_files
+        WHERE audit_id = $1
+          AND wholesaler_name = $2
+        ORDER BY uploaded_at DESC
+        LIMIT 1`,
+      [id, name],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ code: "NOT_FOUND", message: "File not found" });
+    }
+
+    await sendStoredCsv(res, {
+      subdir: "uploads/wholesalers",
+      fileName: result.rows[0].file_name,
+      mode: req.query.mode === "preview" ? "preview" : "download",
+    });
+  } catch (err) {
+    // 22P02 = malformed uuid in the URL; treat as not-found rather than
+    // echoing the raw Postgres error back to the caller.
+    if (err.code === "22P02") {
+      return res.status(404).json({ code: "NOT_FOUND", message: "File not found" });
+    }
+    console.error("Serve wholesaler file error:", err);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+};
+
+// export const getWholesalerFiles = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const result = await pool.query(
+//       `SELECT id, wholesaler_name, file_name FROM wholesaler_files WHERE audit_id = $1 ORDER BY id DESC`,
+//       [id],
+//     );
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error("Get wholesaler files error:", err);
+//     res.status(500).json({ error: err.message });
+//   }
+// };
 
 export const deleteWholesalerFile = async (req, res) => {
   const client = await pool.connect();

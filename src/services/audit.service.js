@@ -475,78 +475,36 @@ export const insertInventoryRows = async (auditId, rows) => {
     await client.query("BEGIN");
 
     // =========================================
-    // NDC SHEET SYNC
+    // NDC SHEET SYNC (one set-based statement)
+    // This used to loop over every unique NDC and run two SELECTs plus an
+    // INSERT each. With no index on inventory_rows.ndc, every one of those
+    // SELECTs was a full table scan, so a large upload pinned the CPU for
+    // minutes. Same rules as before: skip NDCs already in ndc_sheet, mark
+    // "reviewed" if the NDC was ever seen in inventory_rows, else "pending".
     // =========================================
 
     const uniqueNdcMap = new Map();
-
     for (const row of rows) {
       const ndc = row.ndc?.trim();
-
-      if (!ndc) {
-        continue;
-      }
-
-      // avoid duplicates in same upload
+      if (!ndc) continue;
       if (!uniqueNdcMap.has(ndc)) {
-        uniqueNdcMap.set(ndc, {
-          ndc,
-          drug_name: row.drug_name?.trim() || "Unknown Drug",
-        });
+        uniqueNdcMap.set(ndc, row.drug_name?.trim() || "Unknown Drug");
       }
     }
 
-    // =========================================
-    // CHECK EXISTING INVENTORY
-    // =========================================
-
-    for (const [ndc, value] of uniqueNdcMap.entries()) {
-      // already exists in ndc_sheet?
-      const existingNdcSheet = await client.query(
-        `
-      SELECT id
-      FROM ndc_sheet
-      WHERE ndc = $1
-      `,
-        [ndc],
-      );
-
-      // already managed
-      if (existingNdcSheet.rowCount > 0) {
-        continue;
-      }
-
-      // existed historically?
-      const existingInventory = await client.query(
-        `
-      SELECT id
-      FROM inventory_rows
-      WHERE ndc = $1
-      LIMIT 1
-      `,
-        [ndc],
-      );
-
-      // =====================================
-      // STATUS LOGIC
-      // =====================================
-
-      const status = existingInventory.rowCount > 0 ? "reviewed" : "pending";
-
-      // =====================================
-      // INSERT INTO NDC SHEET
-      // =====================================
-
+    if (uniqueNdcMap.size > 0) {
       await client.query(
         `
-    INSERT INTO ndc_sheet (
-      ndc,
-      drug_name,
-      status
-    )
-    VALUES ($1, $2, $3)
-    `,
-        [ndc, value.drug_name, status],
+        INSERT INTO ndc_sheet (ndc, drug_name, status)
+        SELECT u.ndc,
+               u.drug_name,
+               CASE WHEN EXISTS (
+                 SELECT 1 FROM inventory_rows ir WHERE ir.ndc = u.ndc
+               ) THEN 'reviewed' ELSE 'pending' END
+        FROM UNNEST($1::text[], $2::text[]) AS u(ndc, drug_name)
+        ON CONFLICT (ndc) DO NOTHING
+        `,
+        [[...uniqueNdcMap.keys()], [...uniqueNdcMap.values()]],
       );
     }
 

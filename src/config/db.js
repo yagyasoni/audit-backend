@@ -22,7 +22,7 @@ export const pool = new Pool({
     rejectUnauthorized: false,
   },
   // 🔥 CRITICAL FIXES
-  max: 200, // limit total connections (VERY IMPORTANT)
+  max: 20, // small pool: a micro RDS allows ~80 connections in total
   idleTimeoutMillis: 30000, // close idle connections after 30s
   connectionTimeoutMillis: 2000, // fail fast if DB unavailable
 });

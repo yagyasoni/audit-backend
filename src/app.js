@@ -19,8 +19,8 @@ app.use("/webhook", webhookRoutes);
 
 // app.use(express.json());
 // ✅ FIX: Increase payload limit
-app.use(express.json({ limit: "100mb" }));
-app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use(express.json({ limit: "25mb" })); // file uploads go through multer, not here
+app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
 app.get("/", (req, res) => {
   res.send("AuditProRx API Running");
