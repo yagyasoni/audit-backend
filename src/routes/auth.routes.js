@@ -960,6 +960,44 @@ router.post(
 
       const email = emailResult.rows[0]?.email;
 
+      // Notify the AuditProRx inbox that a pharmacy completed registration.
+      // Fire-and-forget: a failure here must never affect the user's flow.
+      resend.emails
+        .send({
+          from: process.env.EMAIL_FROM,
+          to: "auditprorx@gmail.com",
+          subject: `New pharmacy registered: ${pharmacyName || email || userId}`,
+          html: `
+<div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
+  <div style="max-width:600px; margin:auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+    <div style="background:#0f172a; color:#ffffff; padding:16px; text-align:center; font-size:18px; font-weight:600;">
+      New Pharmacy Registered
+    </div>
+    <div style="padding:24px; color:#1f2937;">
+      <p><b>Pharmacy:</b> ${pharmacyName || "-"}</p>
+      <p><b>Address:</b> ${address || "-"}</p>
+      <p><b>Phone:</b> ${phone || "-"}</p>
+      <p><b>Fax:</b> ${fax || "-"}</p>
+      <p><b>NCPDP:</b> ${ncpdpNumber || "-"}</p>
+      <p><b>NPI:</b> ${npiNumber || "-"}</p>
+      <p><b>User email:</b> ${email || "-"}</p>
+      <p><b>User ID:</b> ${userId || "-"}</p>
+      <p><b>Registered at:</b> ${new Date().toISOString()}</p>
+    </div>
+    <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
+      © 2026 AuditProRx. All rights reserved.
+    </div>
+  </div>
+</div>
+`,
+        })
+        .catch((err) =>
+          console.error(
+            "Pharmacy registration notice email failed:",
+            err?.message || err,
+          ),
+        );
+
       if (email) {
         try {
           await resend.emails.send({
