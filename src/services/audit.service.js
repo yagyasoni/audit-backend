@@ -275,11 +275,11 @@ export const saveInventoryFile = async (
 
   const result = await pool.query(
     `
-    INSERT INTO audit_inventory_files (audit_id, file_name)
-    VALUES ($1, $2)
+    INSERT INTO audit_inventory_files (audit_id, file_name, status_header)
+    VALUES ($1, $2, $3)
     RETURNING *
     `,
-    [auditId, filename],
+    [auditId, filename, headerMapping?.status || null],
   );
 
   const filePath = path.join(process.cwd(), "uploads/inventory", filename);

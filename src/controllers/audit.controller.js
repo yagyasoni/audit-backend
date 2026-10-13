@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse/sync";
+import { format } from "@fast-csv/format";
 
 export const createAudit = async (req, res) => {
   try {
@@ -772,8 +773,34 @@ const readFileSlice = (filePath, endByte) =>
       .on("error", reject);
   });
 
+const STATUS_ALIASES = ["status", "rxstatus"];
+const normalizeHeader = (v) => String(v || "").toLowerCase().replace(/[\s_]/g, "");
+
+// Returns (row) => boolean, or null when nothing has to be filtered out.
+const buildStatusFilter = (headers, exclusions) => {
+  if (!exclusions) return null;
+  const { statusHeader, excludeTransferred, excludeUnbilled } = exclusions;
+  if (!excludeTransferred && !excludeUnbilled) return null;
+
+  let idx = -1;
+  if (statusHeader) {
+    idx = headers.findIndex((h) => normalizeHeader(h) === normalizeHeader(statusHeader));
+  }
+  if (idx === -1) {
+    idx = headers.findIndex((h) => STATUS_ALIASES.includes(normalizeHeader(h)));
+  }
+  if (idx === -1) return null;
+
+  return (row) => {
+    const status = String(row[idx] ?? "").trim().toUpperCase();
+    if (excludeTransferred && status === "T") return false;
+    if (excludeUnbilled && status === "U") return false;
+    return true;
+  };
+};
+
 // Shared by both file types. `fileName` always comes from the DB, never the URL.
-const sendStoredCsv = async (res, { subdir, fileName, mode }) => {
+const sendStoredCsv = async (res, { subdir, fileName, mode, exclusions = null }) => {
   // Guard against a traversal sequence ever reaching path.join.
   const safeName = path.basename(fileName);
   const filePath = path.join(process.cwd(), subdir, safeName);
@@ -809,13 +836,15 @@ const sendStoredCsv = async (res, { subdir, fileName, mode }) => {
     });
 
     const [headers = [], ...dataRows] = records;
-    const rows = dataRows.slice(0, PREVIEW_MAX_ROWS);
+    const keep = buildStatusFilter(headers, exclusions);
+    const visibleRows = keep ? dataRows.filter(keep) : dataRows;
+    const rows = visibleRows.slice(0, PREVIEW_MAX_ROWS);
 
     return res.json({
       fileName: prettyUploadName(safeName),
       headers,
       rows,
-      truncated: truncatedByBytes || dataRows.length > rows.length,
+      truncated: truncatedByBytes || visibleRows.length > rows.length,
       sizeBytes: stat.size,
     });
   }
@@ -825,8 +854,32 @@ const sendStoredCsv = async (res, { subdir, fileName, mode }) => {
     "Content-Disposition",
     `attachment; filename="${prettyUploadName(safeName)}"`,
   );
-  res.setHeader("Content-Length", stat.size);
-  fs.createReadStream(filePath).pipe(res);
+
+  const needsFilter =
+    exclusions && (exclusions.excludeTransferred || exclusions.excludeUnbilled);
+
+  if (!needsFilter) {
+    // raw mode, or nothing excluded: stream the file untouched
+    res.setHeader("Content-Length", stat.size);
+    return fs.createReadStream(filePath).pipe(res);
+  }
+
+  const text = fs.readFileSync(filePath, "utf8");
+  const [headers = [], ...dataRows] = parse(text, {
+    relax_quotes: true,
+    relax_column_count: true,
+    skip_empty_lines: true,
+  });
+  const keep = buildStatusFilter(headers, exclusions) || (() => true);
+
+  // No Content-Length: the filtered size is not known up front.
+  const out = format({ headers: false });
+  out.pipe(res);
+  out.write(headers);
+  for (const row of dataRows) {
+    if (keep(row)) out.write(row);
+  }
+  out.end();
 };
 
 export const serveInventoryFile = async (req, res) => {
@@ -836,9 +889,12 @@ export const serveInventoryFile = async (req, res) => {
     // (delete + insert), so any id the client cached would already be dead.
     // An audit only ever keeps one inventory file.
     const result = await pool.query(
-      `SELECT file_name FROM audit_inventory_files
-        WHERE audit_id = $1
-        ORDER BY uploaded_at DESC
+      `SELECT f.file_name, f.status_header,
+              a.exclude_transferred, a.exclude_unbilled
+         FROM audit_inventory_files f
+         JOIN audits a ON a.id = f.audit_id
+        WHERE f.audit_id = $1
+        ORDER BY f.uploaded_at DESC
         LIMIT 1`,
       [id],
     );
@@ -847,10 +903,24 @@ export const serveInventoryFile = async (req, res) => {
       return res.status(404).json({ code: "NOT_FOUND", message: "File not found" });
     }
 
+    const row = result.rows[0];
+    const mode =
+      req.query.mode === "preview" ? "preview"
+      : req.query.mode === "raw" ? "raw"
+      : "download";
+
     await sendStoredCsv(res, {
       subdir: "uploads/inventory",
-      fileName: result.rows[0].file_name,
-      mode: req.query.mode === "preview" ? "preview" : "download",
+      fileName: row.file_name,
+      mode,
+      exclusions:
+        mode === "raw"
+          ? null
+          : {
+              statusHeader: row.status_header,
+              excludeTransferred: row.exclude_transferred === true,
+              excludeUnbilled: row.exclude_unbilled === true,
+            },
     });
   } catch (err) {
     // 22P02 = malformed uuid in the URL; treat as not-found rather than
