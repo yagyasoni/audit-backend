@@ -1,0 +1,3 @@
+ALTER TABLE audits
+  ADD COLUMN IF NOT EXISTS exclude_transferred BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS exclude_unbilled    BOOLEAN NOT NULL DEFAULT true;

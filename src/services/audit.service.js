@@ -248,6 +248,11 @@ export const saveInventoryFile = async (
   ]);
   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
 
+  await pool.query(
+    `UPDATE audits SET exclude_transferred = $2, exclude_unbilled = $3 WHERE id = $1`,
+    [auditId, excludeTransferred, excludeUnbilled],
+  );
+
   // ✅ Clean old inventory data (replace behavior)
   await pool.query(`DELETE FROM inventory_rows WHERE audit_id = $1`, [auditId]);
   const oldInvFiles = await pool.query(
