@@ -80,7 +80,7 @@ CREATE TABLE users (
   password TEXT,
   role TEXT DEFAULT 'user',
   is_verified BOOLEAN DEFAULT false,
-  status TEXT CHECK (status IN ('active','inactive')) DEFAULT 'inactive',
+  status TEXT CHECK (status IN ('active','inactive')) DEFAULT 'active',
   created_at TIMESTAMP DEFAULT NOW()
 );
 
