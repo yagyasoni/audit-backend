@@ -11,6 +11,7 @@ import publishingRoutes from "./routes/publishing.routes.js";
 import ndcSheetRoutes from "./routes/ndcSheet.routes.js";
 import landingRoutes from "./routes/landing.routes.js";
 import auditGroupRoutes from "./routes/auditGroup.routes.js";
+import temperatureLogsRoutes from "./routes/temperatureLogs.js";
 
 const app = express();
 
@@ -39,5 +40,6 @@ app.use("/post", publishingRoutes);
 app.use("/api", ndcSheetRoutes);
 app.use("/landing", landingRoutes);
 app.use("/audit-groups", auditGroupRoutes);
+app.use("/api/temperature-logs", temperatureLogsRoutes);
 
 export default app;
