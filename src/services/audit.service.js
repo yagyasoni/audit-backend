@@ -311,6 +311,7 @@ export const saveInventoryFile = async (
     const status = String(r.status || "")
       .trim()
       .toUpperCase();
+    if (status === "F") return false; // always excluded (business rule)
     if (excludeTransferred && status === "T") return false;
     if (excludeUnbilled && status === "U") return false;
     return true;

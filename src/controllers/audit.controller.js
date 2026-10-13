@@ -599,7 +599,12 @@ export const createInventoryRows = async (req, res) => {
       return res.status(400).json({ error: "rows array required" });
     }
 
-    const result = await auditService.insertInventoryRows(id, rows);
+    // always excluded (business rule)
+    const keptRows = rows.filter(
+      (r) => String(r.status || "").trim().toUpperCase() !== "F",
+    );
+
+    const result = await auditService.insertInventoryRows(id, keptRows);
 
     res.status(201).json({
       message: "Inventory rows inserted successfully",
@@ -778,9 +783,8 @@ const normalizeHeader = (v) => String(v || "").toLowerCase().replace(/[\s_]/g, "
 
 // Returns (row) => boolean, or null when nothing has to be filtered out.
 const buildStatusFilter = (headers, exclusions) => {
-  if (!exclusions) return null;
+  if (!exclusions) return null; // raw mode: untouched file
   const { statusHeader, excludeTransferred, excludeUnbilled } = exclusions;
-  if (!excludeTransferred && !excludeUnbilled) return null;
 
   let idx = -1;
   if (statusHeader) {
@@ -793,6 +797,7 @@ const buildStatusFilter = (headers, exclusions) => {
 
   return (row) => {
     const status = String(row[idx] ?? "").trim().toUpperCase();
+    if (status === "F") return false; // always excluded (business rule)
     if (excludeTransferred && status === "T") return false;
     if (excludeUnbilled && status === "U") return false;
     return true;
@@ -855,8 +860,7 @@ const sendStoredCsv = async (res, { subdir, fileName, mode, exclusions = null })
     `attachment; filename="${prettyUploadName(safeName)}"`,
   );
 
-  const needsFilter =
-    exclusions && (exclusions.excludeTransferred || exclusions.excludeUnbilled);
+  const needsFilter = exclusions !== null;
 
   if (!needsFilter) {
     // raw mode, or nothing excluded: stream the file untouched
