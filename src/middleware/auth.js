@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import jwt from "jsonwebtoken";
+import { pool } from "../config/db.js";
 
 // Pull the raw token out of "Authorization: Bearer <token>"
 function getBearerToken(req) {
@@ -39,6 +40,41 @@ export function requireAuth(req, res, next) {
       return res.status(401).json({ message: "Token expired" });
     return res.status(401).json({ message: "Invalid token" });
   }
+}
+
+// ── PLAN GATE ────────────────────────────────────────────────
+// Use AFTER requireAuth. Refuses with 403 unless the user's subscription
+// has the given access flag (or full_access).
+//   router.use(requireAuth, requirePlan("inventory_reports_access"))
+const PLAN_FLAGS = [
+  "inventory_reports_access",
+  "inventory_view_access",
+  "drug_lookup_access",
+  "leads_access",
+];
+
+export function requirePlan(accessKey) {
+  if (!PLAN_FLAGS.includes(accessKey))
+    throw new Error(`requirePlan: unknown access key "${accessKey}"`);
+
+  return async (req, res, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT ${accessKey} AS allowed, full_access
+         FROM subscriptions WHERE user_id = $1`,
+        [req.user.userId],
+      );
+      const sub = result.rows[0];
+      if (!sub?.allowed && !sub?.full_access)
+        return res
+          .status(403)
+          .json({ message: "Your plan does not include this feature" });
+      next();
+    } catch (err) {
+      console.error("Plan check error:", err);
+      return res.status(500).json({ message: "Failed to check subscription" });
+    }
+  };
 }
 
 // ── ADMIN-ONLY ───────────────────────────────────────────────
