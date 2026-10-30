@@ -110,8 +110,16 @@ import {
   getListingReportById,
   deleteListingReport,
 } from "../controllers/inventoryView.controller.js";
+import { requireFeature } from "../middleware/auth.js";
 
 const router = express.Router();
+
+// ── Plan gate ────────────────────────────────────────────────
+// Inventory View is a paid feature: every route needs a logged-in user
+// whose plan includes inventory_view_access. Admin tokens pass through
+// (listing moderation); each admin-only handler still verifies the
+// admin token itself.
+router.use(requireFeature("inventory_view_access"));
 
 function requireAdmin(req, res, next) {
   const header = req.headers.authorization || "";

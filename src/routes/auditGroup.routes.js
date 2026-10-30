@@ -2,8 +2,15 @@ import express from "express";
 import crypto from "crypto";
 import { pool } from "../config/db.js";
 import { Resend } from "resend";
+import { requireFeature } from "../middleware/auth.js";
 
 const router = express.Router();
+
+// ── Plan gate ────────────────────────────────────────────────
+// Report-sharing groups belong to the Inventory View tier: the frontend
+// gates the Group Reports page and the report view's groups panel on
+// inventory_view_access, so the API does the same.
+router.use(requireFeature("inventory_view_access"));
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 

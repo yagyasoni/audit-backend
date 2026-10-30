@@ -130,3 +130,19 @@ export function requireAnyAuth(req, res, next) {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
+
+// ── FEATURE GATE (plan OR admin) ─────────────────────────────
+// Use on feature routes the client app reads/writes and an admin may
+// also moderate. Accepts either token. Admins pass straight through;
+// clients must hold the given access flag (or full_access) — the same
+// rule as requirePlan, which it reuses.
+//   router.use(requireFeature("inventory_view_access"))
+export function requireFeature(accessKey) {
+  const planCheck = requirePlan(accessKey); // validates accessKey up front
+
+  return (req, res, next) =>
+    requireAnyAuth(req, res, () => {
+      if (req.role === "admin") return next();
+      return planCheck(req, res, next);
+    });
+}
