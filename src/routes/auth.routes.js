@@ -8,6 +8,7 @@ import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
 import multer from "multer";
 import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import { getClientInfo, sendMetaEvent } from "../services/metaCapi.service.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -130,7 +131,7 @@ router.post("/register", async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, eventId, fbp, fbc } = req.body;
 
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
@@ -148,10 +149,11 @@ router.post("/verify-otp", async (req, res) => {
       return res.status(400).json({ message: "Invalid or Expired OTP" });
     }
 
-    await pool.query(
+    const verified = await pool.query(
       `UPDATE users
        SET is_verified = true
-       WHERE email = $1`,
+       WHERE email = $1
+       RETURNING id`,
       [email],
     );
 
@@ -160,6 +162,21 @@ router.post("/verify-otp", async (req, res) => {
        WHERE email = $1`,
       [email],
     );
+
+    // Meta CAPI — pairs with the browser sign_up Pixel event via eventId.
+    // Not awaited: tracking must not slow down or break verification.
+    const { ip, userAgent } = getClientInfo(req);
+    sendMetaEvent({
+      eventName: "CompleteRegistration",
+      eventId,
+      email,
+      externalId: verified.rows[0]?.id,
+      fbp,
+      fbc,
+      ip,
+      userAgent,
+      sourceUrl: "https://www.auditprorx.com/auth",
+    });
 
     return res.status(200).json({ message: "Account verified successfully" });
   } catch (error) {
