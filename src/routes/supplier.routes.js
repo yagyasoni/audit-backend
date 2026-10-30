@@ -2,6 +2,7 @@ import express from "express";
 import { pool } from "../config/db.js";
 import crypto from "crypto";
 import { Resend } from "resend";
+import { requireFeature } from "../middleware/auth.js";
 
 const router = express.Router();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -300,7 +301,9 @@ router.get("/supplier-mapping-by-name/:supplierName", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // GET /api/bin-search — search master_sheet by BIN/PCN/Group
 // ─────────────────────────────────────────────────────────────
-router.get("/bin-search", async (req, res) => {
+// Plan gate: Bin Search is a paid feature (the sidebar lists it under
+// inventory_reports_access, which every tier includes).
+router.get("/bin-search", requireFeature("inventory_reports_access"), async (req, res) => {
   try {
     const { bin, pcn, group } = req.query;
 
