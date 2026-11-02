@@ -441,12 +441,18 @@ export const getFullReport = async (req, res) => {
                             AND LOWER(pbm.payer_type) = 'commercial'
                           THEN i.quantity ELSE 0 END), 0) AS benecard,
 
-        -- DST Pharmacy Solutions is always a coupon, whatever its payer type
+        -- Coupon is a merged total: coupon-type plans + DST Pharmacy Solutions
+        -- (any payer type) + SSC + PDMI. ssc and pdmi above are its breakdown.
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
                             AND (LOWER(pbm.payer_type) IN ('coupon','copay card','discount card')
-                              OR LOWER(pbm.pbm_name) = 'dst pharmacy solutions')
+                              OR LOWER(pbm.pbm_name) = 'dst pharmacy solutions'
+                              OR ((LOWER(pbm.pbm_name) ILIKE '%southern scripts%'
+                                   OR LOWER(pbm.pbm_name) ILIKE '%liviniti%')
+                                  AND LOWER(pbm.payer_type) = 'commercial')
+                              OR (LOWER(pbm.pbm_name) = 'pdmi'
+                                  AND LOWER(pbm.payer_type) = 'commercial'))
                           THEN i.quantity ELSE 0 END), 0) AS coupon,
  
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
