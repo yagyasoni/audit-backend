@@ -372,10 +372,11 @@ export const getFullReport = async (req, res) => {
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
-                            AND LOWER(pbm.pbm_name) = 'caremark'
+                            AND (LOWER(pbm.pbm_name) LIKE '%cvs%'
+                              OR LOWER(pbm.pbm_name) LIKE '%caremark%')
                             AND LOWER(pbm.payer_type) = 'commercial'
                           THEN i.quantity ELSE 0 END), 0) AS cvs_caremark,
- 
+
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
@@ -394,12 +395,14 @@ export const getFullReport = async (req, res) => {
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
                             AND LOWER(pbm.payer_type) = 'medicaid'
+                            AND LOWER(COALESCE(pbm.pbm_name, '')) <> 'dst pharmacy solutions'
                           THEN i.quantity ELSE 0 END), 0) AS nj_medicaid,
- 
+
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
-                            AND LOWER(pbm.payer_type) = 'medicare'
+                            AND LOWER(pbm.payer_type) LIKE 'medicare%'
+                            AND LOWER(COALESCE(pbm.pbm_name, '')) <> 'dst pharmacy solutions'
                           THEN i.quantity ELSE 0 END), 0) AS medicare,
  
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
@@ -413,14 +416,37 @@ export const getFullReport = async (req, res) => {
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
-                            AND LOWER(pbm.pbm_name) IN ('medimpact')
+                            AND LOWER(pbm.pbm_name) = 'pdmi'
                             AND LOWER(pbm.payer_type) = 'commercial'
                           THEN i.quantity ELSE 0 END), 0) AS pdmi,
- 
+
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
                                  OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
                                  OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
-                            AND LOWER(pbm.payer_type) IN ('coupon','copay card')
+                            AND LOWER(pbm.pbm_name) = 'medimpact'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS medimpact,
+
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'prime therapeutics'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS prime_therapeutics,
+
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND LOWER(pbm.pbm_name) = 'benecard'
+                            AND LOWER(pbm.payer_type) = 'commercial'
+                          THEN i.quantity ELSE 0 END), 0) AS benecard,
+
+        -- DST Pharmacy Solutions is always a coupon, whatever its payer type
+        COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
+                                 OR (a.inventory_start_date IS NULL AND a.inventory_end_date IS NULL)
+                                 OR i.date_filled BETWEEN a.inventory_start_date AND a.inventory_end_date)
+                            AND (LOWER(pbm.payer_type) IN ('coupon','copay card','discount card')
+                              OR LOWER(pbm.pbm_name) = 'dst pharmacy solutions')
                           THEN i.quantity ELSE 0 END), 0) AS coupon,
  
         COALESCE(SUM(CASE WHEN (i.date_filled IS NULL
@@ -1080,15 +1106,20 @@ export const getInventoryDetail = async (req, res) => {
          CASE
            WHEN LOWER(pbm.pbm_name) = 'horizon' AND LOWER(pbm.payer_type) = 'commercial' THEN 'horizon'
            WHEN LOWER(pbm.pbm_name) = 'express scripts' AND LOWER(pbm.payer_type) = 'commercial' THEN 'express'
-           WHEN LOWER(pbm.pbm_name) = 'caremark' AND LOWER(pbm.payer_type) = 'commercial' THEN 'cvsCaremark'
+           WHEN LOWER(pbm.pbm_name) = 'dst pharmacy solutions' THEN 'coupon'
+           WHEN (LOWER(pbm.pbm_name) LIKE '%cvs%' OR LOWER(pbm.pbm_name) LIKE '%caremark%')
+                AND LOWER(pbm.payer_type) = 'commercial' THEN 'cvsCaremark'
            WHEN LOWER(pbm.pbm_name) IN ('optum','optumrx') AND LOWER(pbm.payer_type) = 'commercial' THEN 'optumrx'
            WHEN LOWER(pbm.pbm_name) = 'humana' AND LOWER(pbm.payer_type) = 'commercial' THEN 'humana'
            WHEN (LOWER(pbm.pbm_name) ILIKE '%southern scripts%' OR LOWER(pbm.pbm_name) ILIKE '%liviniti%')
                 AND LOWER(pbm.payer_type) = 'commercial' THEN 'ssc'
-           WHEN LOWER(pbm.pbm_name) = 'medimpact' AND LOWER(pbm.payer_type) = 'commercial' THEN 'pdmi'
-           WHEN LOWER(pbm.payer_type) IN ('coupon','copay card') THEN 'coupon'
+           WHEN LOWER(pbm.pbm_name) = 'pdmi' AND LOWER(pbm.payer_type) = 'commercial' THEN 'pdmi'
+           WHEN LOWER(pbm.pbm_name) = 'medimpact' AND LOWER(pbm.payer_type) = 'commercial' THEN 'medimpact'
+           WHEN LOWER(pbm.pbm_name) = 'prime therapeutics' AND LOWER(pbm.payer_type) = 'commercial' THEN 'primeTherapeutics'
+           WHEN LOWER(pbm.pbm_name) = 'benecard' AND LOWER(pbm.payer_type) = 'commercial' THEN 'benecard'
+           WHEN LOWER(pbm.payer_type) IN ('coupon','copay card','discount card') THEN 'coupon'
            WHEN LOWER(pbm.payer_type) = 'medicaid' THEN 'njMedicaid'
-           WHEN LOWER(pbm.payer_type) = 'medicare' THEN 'medicare'
+           WHEN LOWER(pbm.payer_type) LIKE 'medicare%' THEN 'medicare'
            WHEN LOWER(pbm.payer_type) = 'government/military' THEN 'govMilitary'
            ELSE NULL
          END AS pbm_column,
