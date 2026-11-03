@@ -292,6 +292,18 @@ export const createAudit = async (req, res) => {
 //   }
 // };
 
+// Business rule for every report-facing read of inventory_rows (alias `i`):
+// status F is never counted; T and U are dropped when the audit's exclusion
+// flags say so. Upload already applies this, but audits uploaded before
+// 2026-10-13 still hold F rows, so it is enforced at read time as well.
+// `aud` is the alias of the audits row that carries the flags.
+const inventoryStatusFilter = (aud = "a") => `
+        UPPER(TRIM(COALESCE(i.status, ''))) <> 'F'
+        AND NOT (COALESCE(${aud}.exclude_transferred, false)
+                 AND UPPER(TRIM(COALESCE(i.status, ''))) = 'T')
+        AND NOT (COALESCE(${aud}.exclude_unbilled, false)
+                 AND UPPER(TRIM(COALESCE(i.status, ''))) = 'U')`;
+
 export const getFullReport = async (req, res) => {
   try {
     const { id } = req.params;
@@ -309,7 +321,9 @@ export const getFullReport = async (req, res) => {
           inventory_start_date,
           inventory_end_date,
           wholesaler_start_date,
-          wholesaler_end_date
+          wholesaler_end_date,
+          exclude_transferred,
+          exclude_unbilled
         FROM audits
         WHERE id = $1
       ),
@@ -526,7 +540,8 @@ export const getFullReport = async (req, res) => {
         ON ab.ndc = LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
 
       WHERE i.audit_id = $1
- 
+        AND ${inventoryStatusFilter("a")}
+
       GROUP BY i.ndc
  
       -- ✅ SCENE 2 — NO HAVING clause, every drug stays in the result
@@ -1091,7 +1106,8 @@ export const getInventoryDetail = async (req, res) => {
 
     const result = await pool.query(
       `WITH a AS (
-         SELECT inventory_start_date, inventory_end_date
+         SELECT inventory_start_date, inventory_end_date,
+                exclude_transferred, exclude_unbilled
          FROM audits WHERE id = $1
        )
        SELECT
@@ -1172,6 +1188,7 @@ export const getInventoryDetail = async (req, res) => {
          ) sms
        ) spbm ON true
        WHERE i.audit_id = $1
+         AND ${inventoryStatusFilter("a")}
          AND LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0')
            = LPAD(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 11, '0')
        ORDER BY i.date_filled ASC NULLS LAST`,
@@ -1593,7 +1610,9 @@ export const getAberrantRiskSummary = async (req, res) => {
           LTRIM(UPPER(TRIM(COALESCE(i.primary_bin, ''))), '0') AS bin_norm,
           COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) AS amount
         FROM inventory_rows i
+        JOIN audits a ON a.id = i.audit_id
         WHERE i.audit_id = $1
+          AND ${inventoryStatusFilter("a")}
           AND i.date_filled IS NOT NULL
           AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2
       )`;
@@ -1608,7 +1627,9 @@ export const getAberrantRiskSummary = async (req, res) => {
           LTRIM(UPPER(TRIM(COALESCE(i.primary_bin, ''))), '0') AS bin_norm,
           COALESCE(i.primary_paid, 0) + COALESCE(i.secondary_paid, 0) AS amount
         FROM inventory_rows i
+        JOIN audits a ON a.id = i.audit_id
         WHERE i.audit_id = $1
+          AND ${inventoryStatusFilter("a")}
           AND i.date_filled IS NOT NULL
           AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2
       ),
@@ -1637,9 +1658,11 @@ export const getAberrantRiskSummary = async (req, res) => {
          COUNT(CASE WHEN cb.bin_norm IS NOT NULL THEN 1 END) AS caremark_matched_rows,
          array_agg(DISTINCT LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))), '0')) FILTER (WHERE cb.bin_norm IS NOT NULL) AS matched_bins
        FROM inventory_rows i
+       JOIN audits a ON a.id = i.audit_id
        LEFT JOIN caremark_bins cb
          ON cb.bin_norm = LTRIM(UPPER(TRIM(COALESCE(i.primary_bin,''))), '0')
        WHERE i.audit_id = $1
+         AND ${inventoryStatusFilter("a")}
          AND i.date_filled IS NOT NULL
          AND TO_CHAR(i.date_filled, 'YYYY-MM') = $2`,
       [id, month],
