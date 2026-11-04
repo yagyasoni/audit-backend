@@ -3,6 +3,7 @@
 import express from "express";
 import Stripe from "stripe";
 import { pool } from "./db.js";
+import { sendMetaEvent } from "../services/metaCapi.service.js";
 
 const router = express.Router();
 
@@ -93,6 +94,30 @@ router.post(
 
           // Record the trial-code redemption (idempotent).
           await finalizeTrialRedemption(subscription);
+
+          // New subscriber only — renewals/upgrades are not ad conversions.
+          // event_id = session.id, so Stripe retries and the browser Pixel
+          // purchase are de-duplicated by Meta. Skips unpaid (async) payments.
+          if (
+            event.type === "checkout.session.completed" &&
+            event.data.object.payment_status !== "unpaid"
+          ) {
+            const session = event.data.object;
+            const isTrial = subscription.status === "trialing";
+            await sendMetaEvent({
+              eventName: isTrial ? "StartTrial" : "Subscribe",
+              eventId: session.id,
+              email: session.customer_details?.email,
+              externalId: session.metadata?.userId,
+              fbp: session.metadata?.fbp,
+              fbc: session.metadata?.fbc,
+              ip: session.metadata?.ip,
+              userAgent: session.metadata?.ua,
+              sourceUrl: "https://www.auditprorx.com/Mainpage",
+              value: isTrial ? 0 : (session.amount_total || 0) / 100,
+              currency: (session.currency || "usd").toUpperCase(),
+            });
+          }
           break;
         }
 

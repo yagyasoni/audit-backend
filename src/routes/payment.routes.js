@@ -2,6 +2,7 @@ import express from "express";
 import Stripe from "stripe";
 import { pool } from "../config/db.js";
 import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import { getClientInfo } from "../services/metaCapi.service.js";
 
 const router = express.Router();
 
@@ -114,6 +115,8 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       plan,
       referralCode = null,
       trialCode = null,
+      fbp = null,
+      fbc = null,
     } = req.body;
 
     if (!userId || !email || !plan)
@@ -183,19 +186,31 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       subscription_data.metadata.trialCode = trial.code;
     }
 
+    // ─── Meta CAPI context — read back by the webhook on completion ────────
+
+    const { ip, userAgent } = getClientInfo(req);
+    const metadata = { userId: String(userId), plan };
+    if (ip) metadata.ip = ip;
+    if (userAgent) metadata.ua = userAgent;
+    if (fbp) metadata.fbp = String(fbp).slice(0, 200);
+    if (fbc) metadata.fbc = String(fbc).slice(0, 500);
+
     // ─── Stripe Checkout ───────────────────────────────────────────────────
     // allow_promotion_codes is for real discounts only (separate from trials).
     // Remove it if you don't offer discount coupons.
+    // {CHECKOUT_SESSION_ID} is filled in by Stripe — the frontend uses it as
+    // the purchase transaction_id / Meta event_id.
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       allow_promotion_codes: true,
       payment_method_collection: "always",
-      metadata: { userId: String(userId) },
+      metadata,
       subscription_data,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "https://www.auditprorx.com/Mainpage?payment=success",
+      success_url:
+        "https://www.auditprorx.com/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://www.auditprorx.com/cancel",
     });
 
