@@ -1317,6 +1317,16 @@ export const getDrugWholesalerDetail = async (
   };
 };
 
+// ── Drug lookup: billed claims only ─────────────────────────────────────────
+// Every drug-lookup reader (global search, NDC rows, BIN/PCN/GRP drawer,
+// landing stats, per-audit lookup in the report) must reflect only what was
+// actually billed. F (filled, not billed), T (transferred) and U (unbilled)
+// rows stay in inventory_rows for the audit reports' own rules; they are just
+// never read here. status is a required upload column, so a strict 'B' match
+// is safe (the handful of blank-status rows are zero-quantity junk).
+const BILLED_ONLY = (col = "status") =>
+  `UPPER(TRIM(COALESCE(${col}, ''))) = 'B'`;
+
 export const getCommunityDataGlobal = async (
   ndc,
   {
@@ -1356,6 +1366,7 @@ export const getCommunityDataGlobal = async (
       LPAD(REGEXP_REPLACE(i.ndc, '[^0-9]', '', 'g'), 11, '0'),
       10
     ) = RIGHT($1, 10)
+    AND ${BILLED_ONLY("i.status")}
   `;
 
   // ✅ Range / timeline filter
@@ -1460,6 +1471,7 @@ export const getDrugLookup = async (auditId, ingredient) => {
         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
     FROM inventory_rows
     WHERE audit_id = $1
+      AND ${BILLED_ONLY()}
       AND UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($2)
     GROUP BY ${CLEAN_DRUG}
     ORDER BY rx_count DESC
@@ -1482,6 +1494,7 @@ export const getDrugLookup = async (auditId, ingredient) => {
         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
     FROM inventory_rows
     WHERE audit_id = $1
+      AND ${BILLED_ONLY()}
       AND UPPER(SPLIT_PART(TRIM(drug_name), ' ', 1)) = UPPER($2)
     GROUP BY ${CLEAN_DRUG}, ndc
     ORDER BY ${CLEAN_DRUG}, rx_count DESC
@@ -1576,6 +1589,7 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
         ON ${NDC_NORM("ns.ndc")} = ${NDC_NORM("inventory_rows.ndc")}
       WHERE inventory_rows.ndc IS NOT NULL
         AND TRIM(inventory_rows.ndc) <> ''
+        AND ${BILLED_ONLY("inventory_rows.status")}
       GROUP BY ${NDC_NORM("inventory_rows.ndc")}
     )
   `;
@@ -1618,6 +1632,9 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
   // Exclude corrupted rows where an entire CSV blob was imported into a single
   // drug_name cell (real drug names are short). Keeps junk out of results.
   conditions.push(`LENGTH(nn.raw_name) <= 140`);
+
+  // Billed claims only (see BILLED_ONLY above).
+  conditions.push(BILLED_ONLY("inventory_rows.status"));
 
   // ── Optional BIN/PCN/GRP filters ──
   if (bin && String(bin).trim()) {
@@ -1908,10 +1925,10 @@ export const getDrugLookupLanding = async () => {
   const [statsRes, trendingRes] = await Promise.all([
     pool.query(`
   SELECT
-    (SELECT COUNT(DISTINCT ${CLEAN_DRUG}) FROM inventory_rows WHERE drug_name IS NOT NULL AND TRIM(drug_name) != '') AS drugs_indexed,
-    (SELECT COUNT(DISTINCT ndc) FROM inventory_rows WHERE ndc IS NOT NULL AND TRIM(ndc) != '') AS ndc_codes,
-    (SELECT COUNT(*) FROM inventory_rows) AS total_prescriptions,
-    (SELECT COUNT(DISTINCT rx_number) FROM inventory_rows WHERE rx_number IS NOT NULL AND TRIM(rx_number) != '') AS unique_rx
+    (SELECT COUNT(DISTINCT ${CLEAN_DRUG}) FROM inventory_rows WHERE ${BILLED_ONLY()} AND drug_name IS NOT NULL AND TRIM(drug_name) != '') AS drugs_indexed,
+    (SELECT COUNT(DISTINCT ndc) FROM inventory_rows WHERE ${BILLED_ONLY()} AND ndc IS NOT NULL AND TRIM(ndc) != '') AS ndc_codes,
+    (SELECT COUNT(*) FROM inventory_rows WHERE ${BILLED_ONLY()}) AS total_prescriptions,
+    (SELECT COUNT(DISTINCT rx_number) FROM inventory_rows WHERE ${BILLED_ONLY()} AND rx_number IS NOT NULL AND TRIM(rx_number) != '') AS unique_rx
 `),
     pool.query(`
       SELECT query, COUNT(*) AS hits
