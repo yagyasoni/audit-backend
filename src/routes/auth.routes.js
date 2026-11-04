@@ -1445,6 +1445,17 @@ router.get("/admin/dashboard", requireAdmin, (req, res) => {
 // });
 router.get("/users", requireAnyAuth, async (req, res) => {
   try {
+    // Admins (admin token) get every user. Anyone else gets only their own
+    // row: this route used to return all users' contact, license and DEA
+    // details to any logged-in pharmacy. inactiveAccount.tsx calls it to
+    // find the current user's status, which still works with one row.
+    const isAdmin = Boolean(req.admin);
+    const ownId = req.user?.userId;
+
+    if (!isAdmin && !ownId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
     const result = await pool.query(
       `SELECT
          u.id,
@@ -1471,7 +1482,9 @@ router.get("/users", requireAnyAuth, async (req, res) => {
          ORDER BY created_at DESC
          LIMIT 1
        ) pd ON true
+       ${isAdmin ? "" : "WHERE u.id = $1"}
        ORDER BY u.created_at DESC`,
+      isAdmin ? [] : [ownId],
     );
     res.status(200).json(result.rows);
   } catch (error) {

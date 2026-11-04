@@ -149,19 +149,19 @@ async function sendPublishEmails({ title, category, location }) {
   for (let i = 0; i < users.length; i += EMAIL_BATCH_SIZE) {
     const batch = users.slice(i, i + EMAIL_BATCH_SIZE);
 
-    const { error } = await resend.batch.send(
-      batch.map((user) => ({
-        from: process.env.EMAIL_FROM,
-        to: user.email,
-        subject: `New Article Published - ${title}`,
-        html: buildPublishEmailHtml({
-          name: user.name,
-          title,
-          category,
-          location,
-        }),
-      })),
-    );
+    const messages = batch.map((user) => ({
+      from: process.env.EMAIL_FROM,
+      to: user.email,
+      subject: `New Article Published - ${title}`,
+      html: buildPublishEmailHtml({
+        name: user.name,
+        title,
+        category,
+        location,
+      }),
+    }));
+
+    const { error } = await resend.batch.send(messages);
 
     // Resend reports failures in `error` rather than throwing, so log it
     // here and carry on with the next batch.
@@ -170,6 +170,25 @@ async function sendPublishEmails({ title, category, location }) {
         `Publish email batch ${i / EMAIL_BATCH_SIZE + 1} failed:`,
         error,
       );
+
+      // A validation error (e.g. one bad address) rejects the whole batch
+      // and sends nothing, so retry one by one: only the bad address fails.
+      // Other errors may have sent part of the batch; no retry, to avoid
+      // duplicate emails.
+      if (error.statusCode === 422 || error.statusCode === 400) {
+        for (const message of messages) {
+          const { error: oneError } = await resend.emails.send(message);
+          if (oneError) {
+            console.error(
+              `Publish email to ${message.to} failed:`,
+              oneError.message,
+            );
+          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, EMAIL_BATCH_DELAY_MS),
+          );
+        }
+      }
     }
 
     if (i + EMAIL_BATCH_SIZE < users.length) {

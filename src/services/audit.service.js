@@ -1,9 +1,9 @@
-import { pool } from "../config/db.js";
+import { parse } from "csv-parse/sync";
 import fs from "fs";
 import path from "path";
-import { parse } from "csv-parse/sync";
-import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
 import { Resend } from "resend";
+import { pool } from "../config/db.js";
+import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -522,7 +522,8 @@ export const insertInventoryRows = async (auditId, rows) => {
           // r.date_filled || null,
           cleanDate(r.date_filled),
           r.drug_name || null,
-          r.quantity ? parseInt(r.quantity) : null,
+          // r.quantity ? parseInt(r.quantity) : null,
+          r.quantity ? cleanNumber(r.quantity) : null,
           r.package_size || null,
           r.primary_bin || null,
           r.primary_pcn || null,
@@ -780,7 +781,8 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             mapping.quantity &&
             row[mapping.quantity] !== undefined &&
             row[mapping.quantity] !== ""
-              ? (cleanInt(row[mapping.quantity]) ?? 0)
+              // ? (cleanInt(row[mapping.quantity]) ?? 0)
+                ? (cleanNumber(row[mapping.quantity]) ?? 0)
               : null;
           const unitCost =
             mapping.unitPrice && row[mapping.unitPrice]
