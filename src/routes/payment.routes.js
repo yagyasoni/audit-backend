@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { pool } from "../config/db.js";
 import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
 import { getClientInfo } from "../services/metaCapi.service.js";
+import { sendGA4Event } from "../services/ga4mp.service.js";
 
 const router = express.Router();
 
@@ -117,6 +118,7 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       trialCode = null,
       fbp = null,
       fbc = null,
+      ga4ClientId = null,
     } = req.body;
 
     if (!userId || !email || !plan)
@@ -212,6 +214,19 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       success_url:
         "https://www.auditprorx.com/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://www.auditprorx.com/cancel",
+    });
+
+    // GA4 — begin_checkout fires when the Stripe session is successfully created.
+    sendGA4Event({
+      eventName: "begin_checkout",
+      clientId: ga4ClientId,
+      userId,
+      params: {
+        currency: "USD",
+        value: plan === "base" ? 99 : plan === "professional" ? 249 : 399,
+        items: [{ item_id: plan, item_name: plan }],
+        ...(trial?.ok ? { coupon: trial.code } : {}),
+      },
     });
 
     return res.json({ url: session.url });
