@@ -9,6 +9,7 @@ import crypto from "crypto";
 import multer from "multer";
 import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
 import { getClientInfo, sendMetaEvent } from "../services/metaCapi.service.js";
+import { sendGA4Event } from "../services/ga4mp.service.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -176,6 +177,16 @@ router.post("/verify-otp", async (req, res) => {
       ip,
       userAgent,
       sourceUrl: "https://www.auditprorx.com/auth",
+    });
+
+    // GA4 Measurement Protocol — qualify_lead fires on verified account creation.
+    // clientId comes from the _ga cookie value sent by the frontend.
+    const { clientId: ga4ClientId } = req.body;
+    sendGA4Event({
+      eventName: "qualify_lead",
+      clientId: ga4ClientId,
+      userId: verified.rows[0]?.id,
+      params: { method: "email" },
     });
 
     return res.status(200).json({ message: "Account verified successfully" });
@@ -924,6 +935,37 @@ router.post(
           $29,$30,
           $31
         )
+        ON CONFLICT (user_id) DO UPDATE SET
+          pharmacy_name            = EXCLUDED.pharmacy_name,
+          address                  = EXCLUDED.address,
+          phone                    = EXCLUDED.phone,
+          fax                      = EXCLUDED.fax,
+          ncpdp_number             = EXCLUDED.ncpdp_number,
+          npi_number               = EXCLUDED.npi_number,
+          pharmacy_license_number  = EXCLUDED.pharmacy_license_number,
+          license_expiry_date      = EXCLUDED.license_expiry_date,
+          license_file             = COALESCE(EXCLUDED.license_file, pharmacy_details.license_file),
+          dea_number               = EXCLUDED.dea_number,
+          dea_expiry_date          = EXCLUDED.dea_expiry_date,
+          dea_file                 = COALESCE(EXCLUDED.dea_file, pharmacy_details.dea_file),
+          cds_number               = EXCLUDED.cds_number,
+          cds_expiry               = EXCLUDED.cds_expiry,
+          cds_file                 = COALESCE(EXCLUDED.cds_file, pharmacy_details.cds_file),
+          pharmacist_name          = EXCLUDED.pharmacist_name,
+          pharmacist_license_number= EXCLUDED.pharmacist_license_number,
+          pharmacist_expiration    = EXCLUDED.pharmacist_expiration,
+          pharmacist_file          = COALESCE(EXCLUDED.pharmacist_file, pharmacy_details.pharmacist_file),
+          cmea_expiry              = EXCLUDED.cmea_expiry,
+          cmea_file                = COALESCE(EXCLUDED.cmea_file, pharmacy_details.cmea_file),
+          ein_number               = EXCLUDED.ein_number,
+          ein_file                 = COALESCE(EXCLUDED.ein_file, pharmacy_details.ein_file),
+          liability_insurance_file = COALESCE(EXCLUDED.liability_insurance_file, pharmacy_details.liability_insurance_file),
+          insurance_expiration     = EXCLUDED.insurance_expiration,
+          workers_comp_file        = COALESCE(EXCLUDED.workers_comp_file, pharmacy_details.workers_comp_file),
+          workers_comp_expiration  = EXCLUDED.workers_comp_expiration,
+          surety_bond_file         = COALESCE(EXCLUDED.surety_bond_file, pharmacy_details.surety_bond_file),
+          surety_bond_expiration   = EXCLUDED.surety_bond_expiration,
+          voided_cheque_file       = COALESCE(EXCLUDED.voided_cheque_file, pharmacy_details.voided_cheque_file)
         RETURNING *`,
         [
           userId,
@@ -1067,6 +1109,63 @@ router.post(
         message: "Pharmacy details saved successfully",
         data: result.rows[0],
       });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+);
+
+const FILE_COLUMN_MAP = {
+  licenseFile:          "license_file",
+  deaFile:              "dea_file",
+  cdsFile:              "cds_file",
+  pharmacistFile:       "pharmacist_file",
+  cmeaFile:             "cmea_file",
+  einFile:              "ein_file",
+  liabilityInsuranceFile: "liability_insurance_file",
+  workersCompFile:      "workers_comp_file",
+  suretyBondFile:       "surety_bond_file",
+  voidedChequeFile:     "voided_cheque_file",
+};
+
+router.put(
+  "/pharmacy",
+  upload.fields(Object.keys(FILE_COLUMN_MAP).map((name) => ({ name, maxCount: 1 }))),
+  async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ message: "Authorization header missing" });
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.userId;
+
+      const setClauses = [];
+      const values = [];
+
+      for (const [fieldName, column] of Object.entries(FILE_COLUMN_MAP)) {
+        const buf = req.files?.[fieldName]?.[0]?.buffer;
+        if (buf) {
+          values.push(buf);
+          setClauses.push(`"${column}" = $${values.length}`);
+        }
+      }
+
+      if (setClauses.length === 0) {
+        return res.status(400).json({ message: "No files provided" });
+      }
+
+      values.push(userId);
+      const result = await pool.query(
+        `UPDATE pharmacy_details SET ${setClauses.join(", ")} WHERE user_id = $${values.length} RETURNING *`,
+        values,
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Pharmacy details not found" });
+      }
+
+      res.status(200).json({ message: "Files updated successfully", data: result.rows[0] });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Server error" });
