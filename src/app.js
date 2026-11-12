@@ -15,6 +15,13 @@ import temperatureLogsRoutes from "./routes/temperatureLogs.js";
 
 const app = express();
 
+// The API sits behind nginx on the same machine. Trust the X-Forwarded-For
+// header only when the request really comes from this machine, so req.ip is
+// the visitor's own address and cannot be faked by calling the Node port
+// directly. The limits in middleware/rateLimit.js count by req.ip. If a load
+// balancer is ever put in front, its address range has to be added here.
+app.set("trust proxy", "loopback");
+
 app.use(cors());
 app.use("/webhook", webhookRoutes);
 

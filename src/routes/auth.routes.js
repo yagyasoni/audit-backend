@@ -2,18 +2,89 @@ import express from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
-import generateOTP from "../utils/otp.js";
 import { Resend } from "resend";
 import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
 import multer from "multer";
 import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import {
+  loginLimits,
+  signupLimits,
+  forgotPasswordLimits,
+} from "../middleware/rateLimit.js";
 import { getClientInfo, sendMetaEvent } from "../services/metaCapi.service.js";
+import {
+  OTP_PURPOSE,
+  OTP_RESEND_COOLDOWN_SECONDS,
+  issueOtp,
+  checkOtp,
+  signAdminOtpToken,
+  readAdminOtpToken,
+} from "../services/emailOtp.service.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// ── Replies shared by the email-code routes ──────────────────
+// A failed code check (see checkOtp):
+//   wrong    → 400, with the tries left
+//   locked   → 429, the code has used up its tries
+//   expired / invalid → 400
+// flow is "signup" or "admin": after a locked code a sign-up asks for a new
+// one, an admin goes back to the password step.
+function sendOtpFailure(res, check, flow) {
+  if (check.reason === "locked") {
+    return res.status(429).json({
+      code: "OTP_LOCKED",
+      message:
+        flow === "admin"
+          ? "Too many wrong codes. Please log in again."
+          : "Too many wrong codes. Please request a new code.",
+    });
+  }
+
+  if (check.reason === "wrong") {
+    const left = check.attemptsLeft;
+    return res.status(400).json({
+      code: "OTP_WRONG",
+      message: `Incorrect code. ${left} ${left === 1 ? "try" : "tries"} left.`,
+      attemptsLeft: left,
+    });
+  }
+
+  return res
+    .status(400)
+    .json({ code: "OTP_EXPIRED", message: "Invalid or expired OTP" });
+}
+
+// A refused resend (see issueOtp): still inside the 60-second wait, or — admin
+// only — the current code is locked.
+function sendResendRefusal(res, issued) {
+  if (issued.reason === "locked") {
+    return res.status(429).json({
+      code: "OTP_LOCKED",
+      message: "Too many wrong codes. Please log in again.",
+    });
+  }
+
+  res.set("Retry-After", String(issued.retryAfter));
+  return res.status(429).json({
+    code: "OTP_RESEND_COOLDOWN",
+    message: `Please wait ${issued.retryAfter} seconds before requesting a new code.`,
+    retryAfter: issued.retryAfter,
+  });
+}
+
+// The admin code step is only open to the browser that has just passed the
+// password step (it holds the token that step returned).
+function sendAdminLoginExpired(res) {
+  return res.status(401).json({
+    code: "ADMIN_LOGIN_EXPIRED",
+    message: "Your login has expired. Please log in again.",
+  });
+}
 
 const storage = multer.memoryStorage();
 
@@ -44,7 +115,8 @@ const upload = multer({
 //   }
 // };
 
-router.post("/register", async (req, res) => {
+// Limited to 5 sign-ups per hour from one internet address.
+router.post("/register", signupLimits, async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
@@ -68,13 +140,8 @@ router.post("/register", async (req, res) => {
 
     const user = userResult.rows[0];
 
-    const otp = generateOTP();
-
-    await pool.query(
-      `INSERT INTO email_otps (email,otp,expires_at)
-       VALUES ($1,$2,NOW() + INTERVAL '5 minutes')`,
-      [email, otp],
-    );
+    // Start of the sign-up flow: always a fresh code.
+    const { otp } = await issueOtp(email, OTP_PURPOSE.SIGNUP, { force: true });
 
     await resend.emails.send({
       from: process.env.EMAIL_FROM,
@@ -122,6 +189,8 @@ router.post("/register", async (req, res) => {
     res.status(200).json({
       message: "OTP sent to email",
       user: user,
+      // seconds until "Resend code" is allowed (the page shows it as a timer)
+      resendAfter: OTP_RESEND_COOLDOWN_SECONDS,
     });
   } catch (error) {
     console.error(error);
@@ -137,17 +206,9 @@ router.post("/verify-otp", async (req, res) => {
       return res.status(400).json({ message: "Email and OTP are required" });
     }
 
-    const result = await pool.query(
-      `SELECT * FROM email_otps
-       WHERE email = $1
-       AND otp = $2
-       AND expires_at > NOW()`,
-      [email, otp.toString()],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(400).json({ message: "Invalid or Expired OTP" });
-    }
+    // Limited to 5 wrong tries per code; a correct code is used up here.
+    const check = await checkOtp(email, OTP_PURPOSE.SIGNUP, otp);
+    if (!check.ok) return sendOtpFailure(res, check, "signup");
 
     const verified = await pool.query(
       `UPDATE users
@@ -157,11 +218,13 @@ router.post("/verify-otp", async (req, res) => {
       [email],
     );
 
-    await pool.query(
-      `DELETE FROM email_otps
-       WHERE email = $1`,
-      [email],
-    );
+    // A correct code for an email with no account verifies nothing.
+    if (verified.rowCount === 0) {
+      return res.status(400).json({
+        code: "ACCOUNT_NOT_FOUND",
+        message: "No account found for this email. Please sign up again.",
+      });
+    }
 
     // Meta CAPI — pairs with the browser sign_up Pixel event via eventId.
     // Not awaited: tracking must not slow down or break verification.
@@ -185,7 +248,9 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+// Limited to 10 tries in 15 minutes for one email, and 20 in 15 minutes from
+// one internet address.
+router.post("/login", loginLimits, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -212,18 +277,10 @@ router.post("/login", async (req, res) => {
     }
 
     if (user.role === "admin") {
-      const otp = generateOTP();
-
-      await pool.query(
-        `DELETE FROM email_otps WHERE email = $1`,
-        [user.email], // clear old
-      );
-
-      await pool.query(
-        `INSERT INTO email_otps (email, otp, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
-        [user.email, otp],
-      );
+      // Password step passed: a fresh code (replaces any earlier one).
+      const { otp } = await issueOtp(user.email, OTP_PURPOSE.ADMIN_LOGIN, {
+        force: true,
+      });
 
       await resend.emails.send({
         from: process.env.EMAIL_FROM,
@@ -237,6 +294,10 @@ router.post("/login", async (req, res) => {
         requiresOtp: true, // frontend uses this flag to show OTP screen
         email: user.email,
         user,
+        // Proof that the password step was passed. The code step
+        // (/admin/verify-otp, /admin/resend-otp) refuses to work without it.
+        otpToken: signAdminOtpToken(user.id),
+        resendAfter: OTP_RESEND_COOLDOWN_SECONDS,
       });
     }
 
@@ -391,18 +452,11 @@ router.post("/resend-otp", async (req, res) => {
       return res.status(400).json({ message: "Account already verified" });
     }
 
-    // generate new OTP
-    const otp = generateOTP();
-
-    // delete old OTP
-    await pool.query("DELETE FROM email_otps WHERE email=$1", [email]);
-
-    // insert new OTP
-    await pool.query(
-      `INSERT INTO email_otps (email, otp, expires_at)
-       VALUES ($1,$2,NOW() + INTERVAL '5 minutes')`,
-      [email, otp],
-    );
+    // New code, at most once per 60 seconds for the same email. A refused
+    // request sends no email and says how many seconds are left.
+    const issued = await issueOtp(email, OTP_PURPOSE.SIGNUP);
+    if (!issued.ok) return sendResendRefusal(res, issued);
+    const otp = issued.otp;
 
     // send email
     await resend.emails.send({
@@ -440,7 +494,10 @@ router.post("/resend-otp", async (req, res) => {
 `,
     });
 
-    res.status(200).json({ message: "OTP resent successfully" });
+    res.status(200).json({
+      message: "OTP resent successfully",
+      resendAfter: OTP_RESEND_COOLDOWN_SECONDS,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -494,7 +551,9 @@ router.get("/user-info", async (req, res) => {
   }
 });
 
-router.post("/forgot-password", async (req, res) => {
+// Limited to 3 reset emails per hour for one email, and 5 per hour from one
+// internet address.
+router.post("/forgot-password", forgotPasswordLimits, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -1364,33 +1423,30 @@ router.post("/logout", async (req, res) => {
 
 router.post("/admin/verify-otp", async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { otp, otpToken } = req.body ?? {};
 
-    // 1. Verify the user is actually an admin
+    // 1. Only the browser that has just passed the password step may check a
+    //    code: it must present the token that step returned. The admin is
+    //    taken from that token, not from the request.
+    const passwordStep = readAdminOtpToken(otpToken);
+    if (!passwordStep) return sendAdminLoginExpired(res);
+
+    // 2. Verify the user is actually an admin
     const userResult = await pool.query(
-      `SELECT id, name, email, role FROM users WHERE email = $1 AND role = 'admin'`,
-      [email],
+      `SELECT id, name, email, role FROM users WHERE id = $1 AND role = 'admin'`,
+      [passwordStep.userId],
     );
 
     if (!userResult.rows.length) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    // 2. Validate OTP
-    const otpResult = await pool.query(
-      `SELECT * FROM email_otps
-       WHERE email = $1 AND otp = $2 AND expires_at > NOW()`,
-      [email, otp.toString()],
-    );
-
-    if (!otpResult.rows.length) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
-    }
-
-    // 3. Clear OTP
-    await pool.query(`DELETE FROM email_otps WHERE email = $1`, [email]);
-
     const user = userResult.rows[0];
+
+    // 3. Validate OTP: 5 wrong tries cancel the code, and a correct code is
+    //    used up by the check.
+    const check = await checkOtp(user.email, OTP_PURPOSE.ADMIN_LOGIN, otp);
+    if (!check.ok) return sendOtpFailure(res, check, "admin");
 
     // 4. Issue tokens (same pattern as your existing login)
     const accessToken = jwt.sign(
@@ -1645,21 +1701,32 @@ router.put("/user-status/:id", requireAdmin, async (req, res) => {
 // POST /auth/admin/resend-otp
 router.post("/admin/resend-otp", async (req, res) => {
   try {
-    const { email } = req.body;
+    const { otpToken } = req.body ?? {};
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    // Same rule as /admin/verify-otp: a code is only re-sent to an admin who
+    // has just passed the password step. The address comes from that admin's
+    // account, never from the request.
+    const passwordStep = readAdminOtpToken(otpToken);
+    if (!passwordStep) return sendAdminLoginExpired(res);
+
+    const userResult = await pool.query(
+      `SELECT email FROM users WHERE id = $1 AND role = 'admin'`,
+      [passwordStep.userId],
+    );
+
+    if (!userResult.rows.length) {
+      return res.status(403).json({ message: "Not authorized" });
     }
 
-    const otp = generateOTP();
+    const email = userResult.rows[0].email;
 
-    await pool.query(`DELETE FROM email_otps WHERE email = $1`, [email]);
-
-    await pool.query(
-      `INSERT INTO email_otps (email, otp, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
-      [email, otp],
-    );
+    // At most once per 60 seconds, and never to replace a code that was
+    // cancelled for too many wrong tries (that needs the password again).
+    const issued = await issueOtp(email, OTP_PURPOSE.ADMIN_LOGIN, {
+      allowWhenLocked: false,
+    });
+    if (!issued.ok) return sendResendRefusal(res, issued);
+    const otp = issued.otp;
 
     await resend.emails.send({
       from: process.env.EMAIL_FROM,
@@ -1695,7 +1762,10 @@ router.post("/admin/resend-otp", async (req, res) => {
 </div>`,
     });
 
-    res.status(200).json({ message: "Admin OTP resent successfully" });
+    res.status(200).json({
+      message: "Admin OTP resent successfully",
+      resendAfter: OTP_RESEND_COOLDOWN_SECONDS,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });

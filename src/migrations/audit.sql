@@ -91,11 +91,17 @@ CREATE TABLE auth_providers (
   provider_user_id TEXT
 );
 
+-- attempts / purpose / created_at and the unique key are added to existing
+-- databases by 20261112_email_otp_limits.sql.
 CREATE TABLE email_otps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT,
   otp TEXT,
-  expires_at TIMESTAMP
+  expires_at TIMESTAMP,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  purpose TEXT NOT NULL DEFAULT 'signup',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT email_otps_email_purpose_key UNIQUE (email, purpose)
 );
 
 CREATE TABLE refresh_tokens (
