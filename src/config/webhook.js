@@ -13,7 +13,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // PLAN MAP — 3 fixed tiers, no add-ons
 // base        → $99  /mo → inventory_reports_access
 // professional→ $249 /mo → inventory_reports_access + inventory_view_access
+<<<<<<< HEAD
 // full_access → $499 /mo → all access
+=======
+// full_access → $399 /mo → all access
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 // =========================================
 
 const PRICE_MAP = {
@@ -42,6 +46,20 @@ router.post(
     }
 
     try {
+<<<<<<< HEAD
+=======
+      // M22: idempotency — skip events already processed (Stripe retries on 5xx)
+      const already = await pool.query(
+        "SELECT 1 FROM processed_webhook_events WHERE stripe_event_id = $1",
+        [event.id],
+      );
+      if (already.rows.length) return res.sendStatus(200);
+      await pool.query(
+        "INSERT INTO processed_webhook_events (stripe_event_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        [event.id],
+      );
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       switch (event.type) {
         // =====================================
         // SUBSCRIPTION ACTIVE / RENEWED / UPDATED
@@ -73,10 +91,19 @@ router.post(
             }
           } else if (event.type === "invoice.paid") {
             const invoice = event.data.object;
+<<<<<<< HEAD
             if (!invoice.subscription) break;
             subscription = await stripe.subscriptions.retrieve(
               invoice.subscription,
             );
+=======
+            // M30: subscription id may be on .subscription or .parent.subscription_details.subscription
+            const paidSubId =
+              invoice.subscription ||
+              invoice.parent?.subscription_details?.subscription;
+            if (!paidSubId) break;
+            subscription = await stripe.subscriptions.retrieve(paidSubId);
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
           } else {
             subscription = await stripe.subscriptions.retrieve(
               event.data.object.id,
@@ -138,13 +165,25 @@ router.post(
 
         case "invoice.payment_failed": {
           const invoice = event.data.object;
+<<<<<<< HEAD
           if (!invoice.subscription) break;
+=======
+          // M30: subscription id may be on .subscription or .parent.subscription_details.subscription
+          const failedSubId =
+            invoice.subscription ||
+            invoice.parent?.subscription_details?.subscription;
+          if (!failedSubId) break;
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
           await pool.query(
             `UPDATE subscriptions
              SET status='past_due', updated_at=NOW()
              WHERE stripe_subscription_id = $1`,
+<<<<<<< HEAD
             [invoice.subscription],
+=======
+            [failedSubId],
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
           );
 
           console.log(`⚠️  Payment failed — sub: ${invoice.subscription}`);
@@ -200,6 +239,22 @@ async function finalizeTrialRedemption(subscription) {
     const trialCode = subscription.metadata?.trialCode;
     if (!trialCode) return; // no code on this subscription
 
+<<<<<<< HEAD
+=======
+    // L7: prevent same user from redeeming another trial code on a different sub
+    const alreadyUsed = await pool.query(
+      `SELECT 1 FROM subscriptions
+        WHERE user_id = (SELECT user_id FROM subscriptions WHERE stripe_subscription_id = $1)
+          AND trial_code IS NOT NULL
+          AND stripe_subscription_id != $1`,
+      [subscription.id],
+    );
+    if (alreadyUsed.rows.length) {
+      console.log(`⚠️  Trial code ${trialCode} skipped — user already redeemed a trial`);
+      return;
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const updated = await pool.query(
       `UPDATE subscriptions
           SET trial_code = $1
@@ -209,6 +264,7 @@ async function finalizeTrialRedemption(subscription) {
       [trialCode, subscription.id],
     );
 
+<<<<<<< HEAD
     // Only the FIRST delivery actually changes the row → count once
     if (updated.rows.length) {
       await pool.query(
@@ -218,6 +274,25 @@ async function finalizeTrialRedemption(subscription) {
       console.log(
         `🎟️  Trial code ${trialCode} redeemed (sub ${subscription.id})`,
       );
+=======
+    // Only the FIRST delivery actually changes the row → attempt atomic increment.
+    // L25: use a conditional UPDATE so two concurrent completions can never
+    // both push times_redeemed past max_redemptions.
+    if (updated.rows.length) {
+      const claimed = await pool.query(
+        `UPDATE trial_codes
+            SET times_redeemed = times_redeemed + 1
+          WHERE code = $1
+            AND (max_redemptions IS NULL OR times_redeemed < max_redemptions)
+          RETURNING id`,
+        [trialCode],
+      );
+      if (claimed.rows.length) {
+        console.log(`🎟️  Trial code ${trialCode} redeemed (sub ${subscription.id})`);
+      } else {
+        console.warn(`⚠️  Trial code ${trialCode} limit already reached at webhook — trial granted by Stripe but not counted`);
+      }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
   } catch (error) {
     console.error("❌ finalizeTrialRedemption error:", error);
@@ -243,6 +318,19 @@ async function syncSubscription(subscription) {
       return;
     }
 
+<<<<<<< HEAD
+=======
+    // L26: never overwrite access that an admin granted by hand
+    const adminRow = await pool.query(
+      `SELECT admin_override FROM subscriptions WHERE user_id = $1`,
+      [userId],
+    );
+    if (adminRow.rows[0]?.admin_override) {
+      console.log(`⚠️  Skipping Stripe sync for user ${userId} — admin_override is set`);
+      return;
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const activePriceIds = subscription.items.data.map((item) => item.price.id);
     console.log("USER ID   :", userId);
     console.log("PRICE IDS :", activePriceIds);

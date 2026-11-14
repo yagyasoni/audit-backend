@@ -1,4 +1,8 @@
 import jwt from "jsonwebtoken";
+<<<<<<< HEAD
+=======
+import { randomBytes } from "crypto";
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 import { pool } from "../config/db.js";
 import {
   sendConnectRequestEmail,
@@ -59,12 +63,19 @@ const generateInviteCode = (groupName) => {
       .replace(/[^A-Za-z0-9]/g, "")
       .toUpperCase()
       .slice(0, 8) || "GROUP";
+<<<<<<< HEAD
   const segment = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let s = "";
     for (let i = 0; i < 4; i++)
       s += chars[Math.floor(Math.random() * chars.length)];
     return s;
+=======
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const segment = () => {
+    const bytes = randomBytes(4);
+    return Array.from(bytes).map((b) => chars[b % chars.length]).join("");
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   };
   return `${prefix}-${segment()}-${segment()}`;
 };
@@ -203,7 +214,12 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
+<<<<<<< HEAD
 //     return res.status(500).json({ error: err.message });
+=======
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 //   }
 // };
 
@@ -241,7 +257,12 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
+<<<<<<< HEAD
 //     return res.status(500).json({ error: err.message });
+=======
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 //   }
 // };
 
@@ -276,7 +297,12 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
+<<<<<<< HEAD
 //     return res.status(500).json({ error: err.message });
+=======
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 //   }
 // };
 
@@ -284,7 +310,15 @@ export const getListings = async (req, res) => {
   try {
     const userId = requireUser(req);
     const myPharmacyId = await getUserPharmacyId(userId);
+<<<<<<< HEAD
     const { group_id } = req.query; // NEW: optional filter
+=======
+    const { group_id } = req.query;
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     let memberGroupIds = [];
     if (myPharmacyId) {
@@ -368,6 +402,10 @@ export const getListings = async (req, res) => {
         AND (l.auto_expires_at IS NULL OR l.auto_expires_at > NOW())
         ${whereClause}
       ORDER BY l.created_at DESC
+<<<<<<< HEAD
+=======
+      LIMIT ${limit} OFFSET ${offset}
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       `,
       queryParams,
     );
@@ -384,17 +422,39 @@ export const getListings = async (req, res) => {
     const listings = all;
     const my_listings = all.filter((l) => isMine(l));
 
+<<<<<<< HEAD
     return res.json({ listings, my_listings });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getListings error:", err);
     return res.status(500).json({ error: err.message });
+=======
+    return res.json({ listings, my_listings, page, limit });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("getListings error:", err);
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
 export const createListing = async (req, res) => {
+<<<<<<< HEAD
   try {
     const userId = requireUser(req);
+=======
+  const client = await pool.connect();
+  try {
+    const userId = requireUser(req);
+    // M26: enforce agreement acceptance server-side
+    const agreeCheck = await pool.query(
+      `SELECT 1 FROM inventory_agreement_acceptances WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (agreeCheck.rows.length === 0)
+      return res.status(403).json({ error: "You must accept the network agreement before listing" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const {
       ndc,
       drug_name,
@@ -411,6 +471,7 @@ export const createListing = async (req, res) => {
       group_ids = [],
     } = req.body;
 
+<<<<<<< HEAD
     if (
       !ndc ||
       !drug_name ||
@@ -422,6 +483,33 @@ export const createListing = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+=======
+    if (!ndc || !drug_name || !lot_number || !expiry || !reason_code) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const parsedQty = parseInt(quantity, 10);
+    if (isNaN(parsedQty) || parsedQty < 1) {
+      return res.status(400).json({ error: "Quantity must be a positive integer" });
+    }
+
+    if (acquisition_cost !== undefined && acquisition_cost !== null && acquisition_cost !== "") {
+      const parsedCost = parseFloat(acquisition_cost);
+      if (isNaN(parsedCost) || parsedCost < 0) {
+        return res.status(400).json({ error: "Acquisition cost must be a non-negative number" });
+      }
+    }
+
+    if (isNaN(Date.parse(expiry))) {
+      return res.status(400).json({ error: "Expiry must be a valid date" });
+    }
+
+    // M26: truncate manufacturer to DB column length to prevent insert errors
+    const safeManufacturer = manufacturer
+      ? String(manufacturer).slice(0, 255)
+      : null;
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const pharmacyId = await getUserPharmacyId(userId);
     if (!pharmacyId) {
       return res
@@ -436,7 +524,13 @@ export const createListing = async (req, res) => {
         ? "groups_only"
         : "public";
 
+<<<<<<< HEAD
     const result = await pool.query(
+=======
+    await client.query("BEGIN");
+
+    const result = await client.query(
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       `INSERT INTO inventory_listings
         (user_id, pharmacy_id, ndc, drug_name, strength, dosage_form,
          manufacturer, package_size, quantity, lot_number, expiry,
@@ -450,12 +544,21 @@ export const createListing = async (req, res) => {
         drug_name,
         strength || null,
         dosage_form || null,
+<<<<<<< HEAD
         manufacturer || null,
         package_size || null,
         parseInt(quantity, 10),
         lot_number,
         expiry,
         acquisition_cost ? parseFloat(acquisition_cost) : null,
+=======
+        safeManufacturer,
+        package_size || null,
+        parsedQty,
+        lot_number,
+        expiry,
+        acquisition_cost !== undefined && acquisition_cost !== null && acquisition_cost !== "" ? parseFloat(acquisition_cost) : null,
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         reason_code,
         finalVisibility,
       ],
@@ -463,7 +566,11 @@ export const createListing = async (req, res) => {
     const listing = result.rows[0];
 
     if (finalVisibility === "groups_only" && group_ids.length > 0) {
+<<<<<<< HEAD
       const validGroups = await pool.query(
+=======
+      const validGroups = await client.query(
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         `SELECT m.group_id FROM inventory_group_members m
          JOIN inventory_groups g ON g.id = m.group_id
          WHERE m.pharmacy_id = $1 AND m.group_id = ANY($2::uuid[]) AND g.is_active = true`,
@@ -471,7 +578,11 @@ export const createListing = async (req, res) => {
       );
 
       for (const g of validGroups.rows) {
+<<<<<<< HEAD
         await pool.query(
+=======
+        await client.query(
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
           `INSERT INTO inventory_listing_groups (listing_id, group_id)
            VALUES ($1, $2) ON CONFLICT DO NOTHING`,
           [listing.id, g.group_id],
@@ -479,11 +590,24 @@ export const createListing = async (req, res) => {
       }
     }
 
+<<<<<<< HEAD
     return res.status(201).json(listing);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("createListing error:", err);
     return res.status(500).json({ error: err.message });
+=======
+    await client.query("COMMIT");
+    return res.status(201).json(listing);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("createListing error:", err);
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -525,12 +649,25 @@ export const updateListing = async (req, res) => {
       params.push(q);
     }
     if (expiry !== undefined) {
+<<<<<<< HEAD
+=======
+      if (expiry && isNaN(Date.parse(expiry)))
+        return res.status(400).json({ error: "Expiry must be a valid date" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       sets.push(`expiry = $${p++}`);
       params.push(expiry || null);
     }
     if (acquisition_cost !== undefined) {
+<<<<<<< HEAD
       sets.push(`acquisition_cost = $${p++}`);
       params.push(acquisition_cost ? parseFloat(acquisition_cost) : null);
+=======
+      const parsedUpdateCost = acquisition_cost !== null && acquisition_cost !== "" ? parseFloat(acquisition_cost) : null;
+      if (parsedUpdateCost !== null && isNaN(parsedUpdateCost))
+        return res.status(400).json({ error: "Acquisition cost must be a non-negative number" });
+      sets.push(`acquisition_cost = $${p++}`);
+      params.push(parsedUpdateCost);
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
     if (reason_code !== undefined) {
       sets.push(`reason_code = $${p++}`);
@@ -585,7 +722,12 @@ export const updateListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("updateListing error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -612,7 +754,12 @@ export const updateListing = async (req, res) => {
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("deleteListing error:", err);
+<<<<<<< HEAD
 //     return res.status(500).json({ error: err.message });
+=======
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 //   }
 // };
 
@@ -632,7 +779,12 @@ export const deleteListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteListing error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -661,7 +813,12 @@ export const deleteListing = async (req, res) => {
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("deleteListing error:", err);
+<<<<<<< HEAD
 //     return res.status(500).json({ error: err.message });
+=======
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 //   }
 // };
 
@@ -711,7 +868,12 @@ export const reportListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("reportListing error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -777,7 +939,12 @@ export const getListingReports = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("getListingReports error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -852,7 +1019,12 @@ export const getListingReportById = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("getListingReportById error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -883,7 +1055,12 @@ export const deleteListingReport = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("deleteListingReport error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -909,7 +1086,12 @@ export const getAgreementStatus = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getAgreementStatus error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -935,7 +1117,12 @@ export const acceptAgreement = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("acceptAgreement error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -946,6 +1133,16 @@ export const acceptAgreement = async (req, res) => {
 export const sendConnectRequest = async (req, res) => {
   try {
     const userId = requireUser(req);
+<<<<<<< HEAD
+=======
+    // M26: enforce agreement acceptance server-side
+    const agreeCheck = await pool.query(
+      `SELECT 1 FROM inventory_agreement_acceptances WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (agreeCheck.rows.length === 0)
+      return res.status(403).json({ error: "You must accept the network agreement before contacting sellers" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const {
       listing_id,
       seller_pharmacy_id,
@@ -1033,7 +1230,12 @@ export const sendConnectRequest = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("sendConnectRequest error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1076,7 +1278,12 @@ export const getMyGroups = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getMyGroups error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1125,7 +1332,12 @@ export const discoverGroups = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("discoverGroups error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1210,11 +1422,20 @@ export const requestJoinGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("requestJoinGroup error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
 export const createGroup = async (req, res) => {
+<<<<<<< HEAD
+=======
+  const client = await pool.connect();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   try {
     const userId = requireUser(req);
     const pharmacyId = await getUserPharmacyId(userId);
@@ -1237,7 +1458,13 @@ export const createGroup = async (req, res) => {
     if (Number(countRes.rows[0].count) >= 5)
       return res.status(400).json({ error: "You can be in at most 5 groups." });
 
+<<<<<<< HEAD
     const groupRes = await pool.query(
+=======
+    await client.query("BEGIN");
+
+    const groupRes = await client.query(
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       `INSERT INTO inventory_groups
         (name, description, created_by_user_id, created_by_pharmacy_id, is_discoverable)
        VALUES ($1, $2, $3, $4, $5)
@@ -1246,17 +1473,34 @@ export const createGroup = async (req, res) => {
     );
     const group = groupRes.rows[0];
 
+<<<<<<< HEAD
     await pool.query(
+=======
+    await client.query(
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       `INSERT INTO inventory_group_members (group_id, pharmacy_id, user_id, role)
        VALUES ($1, $2, $3, 'admin')`,
       [group.id, pharmacyId, userId],
     );
 
+<<<<<<< HEAD
     return res.status(201).json(group);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("createGroup error:", err);
     return res.status(500).json({ error: err.message });
+=======
+    await client.query("COMMIT");
+    return res.status(201).json(group);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error("createGroup error:", err);
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1311,7 +1555,12 @@ export const updateGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("updateGroup error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1397,14 +1646,30 @@ export const getGroupDetail = async (req, res) => {
     return res.json({
       group,
       members: membersRes.rows,
+<<<<<<< HEAD
       invite_codes: codesRes.rows,
       pending_invitations: invitesRes.rows,
       pending_join_requests: joinRequestsRes.rows,
+=======
+      // M22: admin-sensitive fields only returned to the group admin
+      ...(group.is_admin
+        ? {
+            invite_codes: codesRes.rows,
+            pending_invitations: invitesRes.rows,
+            pending_join_requests: joinRequestsRes.rows,
+          }
+        : {}),
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupDetail error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1502,6 +1767,7 @@ export const inviteToGroup = async (req, res) => {
         error: "An invitation is already pending for this pharmacy/email",
       });
 
+<<<<<<< HEAD
     const inv = await pool.query(
       `INSERT INTO inventory_group_invitations
         (group_id, invited_email, invited_user_id, invited_pharmacy_id,
@@ -1517,6 +1783,40 @@ export const inviteToGroup = async (req, res) => {
         message || null,
       ],
     );
+=======
+    const invClient = await pool.connect();
+    let invRow;
+    try {
+      await invClient.query("BEGIN");
+      const capCheck = await invClient.query(
+        `SELECT max_members,
+           (SELECT COUNT(*) FROM inventory_group_members WHERE group_id = $1) AS member_count
+         FROM inventory_groups WHERE id = $1 AND is_active = true FOR UPDATE`,
+        [groupId],
+      );
+      if (!capCheck.rows.length) { await invClient.query("ROLLBACK"); return res.status(404).json({ error: "Group not found" }); }
+      if (Number(capCheck.rows[0].member_count) >= capCheck.rows[0].max_members) {
+        await invClient.query("ROLLBACK");
+        return res.status(400).json({ error: "Group is at maximum capacity" });
+      }
+      const invRes = await invClient.query(
+        `INSERT INTO inventory_group_invitations
+          (group_id, invited_email, invited_user_id, invited_pharmacy_id,
+           invited_by_user_id, message, direction)
+         VALUES ($1, $2, $3, $4, $5, $6, 'admin_to_user')
+         RETURNING *`,
+        [groupId, invitedEmail || null, invitedUserId, invitedPharmacyId, userId, message || null],
+      );
+      await invClient.query("COMMIT");
+      invRow = invRes.rows[0];
+    } catch (txErr) {
+      await invClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      invClient.release();
+    }
+    const inv = { rows: [invRow] };
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     if (invitedEmail) {
       try {
@@ -1547,7 +1847,12 @@ export const inviteToGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("inviteToGroup error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1592,7 +1897,12 @@ export const generateGroupInviteCode = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("generateGroupInviteCode error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1671,7 +1981,12 @@ export const joinGroupByCode = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("joinGroupByCode error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1698,12 +2013,27 @@ export const leaveGroup = async (req, res) => {
        WHERE group_id = $1 AND pharmacy_id = $2`,
       [groupId, pharmacyId],
     );
+<<<<<<< HEAD
+=======
+    // M24: also remove shared listings for this pharmacy in this group
+    await pool.query(
+      `DELETE FROM inventory_listing_groups
+       WHERE group_id = $1
+         AND listing_id IN (SELECT id FROM inventory_listings WHERE pharmacy_id = $2)`,
+      [groupId, pharmacyId],
+    );
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     return res.json({ ok: true });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("leaveGroup error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1732,12 +2062,27 @@ export const removeGroupMember = async (req, res) => {
        WHERE group_id = $1 AND pharmacy_id = $2`,
       [groupId, memberPharmacyId],
     );
+<<<<<<< HEAD
+=======
+    // M24: also remove shared listings for the removed member in this group
+    await pool.query(
+      `DELETE FROM inventory_listing_groups
+       WHERE group_id = $1
+         AND listing_id IN (SELECT id FROM inventory_listings WHERE pharmacy_id = $2)`,
+      [groupId, memberPharmacyId],
+    );
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     return res.json({ ok: true });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("removeGroupMember error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1786,7 +2131,12 @@ export const deleteGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteGroup error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1857,7 +2207,12 @@ export const getMyInvitations = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getMyInvitations error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -1936,6 +2291,7 @@ export const acceptInvitation = async (req, res) => {
             : "Requester is already in 5 groups",
       });
 
+<<<<<<< HEAD
     const dup = await pool.query(
       `SELECT 1 FROM inventory_group_members
        WHERE group_id = $1 AND pharmacy_id = $2`,
@@ -1956,11 +2312,55 @@ export const acceptInvitation = async (req, res) => {
       [invitationId],
     );
 
+=======
+    const acceptClient = await pool.connect();
+    try {
+      await acceptClient.query("BEGIN");
+      const capRecheck = await acceptClient.query(
+        `SELECT g.max_members,
+           (SELECT COUNT(*) FROM inventory_group_members WHERE group_id = g.id) AS member_count
+         FROM inventory_groups g WHERE g.id = $1 AND g.is_active = true FOR UPDATE`,
+        [inv.group_id],
+      );
+      if (!capRecheck.rows.length) { await acceptClient.query("ROLLBACK"); return res.status(404).json({ error: "Group not found" }); }
+      if (Number(capRecheck.rows[0].member_count) >= capRecheck.rows[0].max_members) {
+        await acceptClient.query("ROLLBACK");
+        return res.status(400).json({ error: "Group is at maximum capacity" });
+      }
+      const dupMember = await acceptClient.query(
+        `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+        [inv.group_id, memberPharmacyId],
+      );
+      if (dupMember.rows.length === 0) {
+        await acceptClient.query(
+          `INSERT INTO inventory_group_members (group_id, pharmacy_id, user_id, role)
+           VALUES ($1, $2, $3, 'member')`,
+          [inv.group_id, memberPharmacyId, memberUserId],
+        );
+      }
+      await acceptClient.query(
+        `UPDATE inventory_group_invitations SET status = 'accepted', responded_at = NOW() WHERE id = $1`,
+        [invitationId],
+      );
+      await acceptClient.query("COMMIT");
+    } catch (txErr) {
+      await acceptClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      acceptClient.release();
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     return res.json({ ok: true, group_id: inv.group_id });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("acceptInvitation error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2015,7 +2415,12 @@ export const declineInvitation = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("declineInvitation error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2034,9 +2439,14 @@ export const searchPharmacies = async (req, res) => {
     const result = await pool.query(
       `SELECT
          p.id, p.pharmacy_name, p.address, p.npi_number, p.ncpdp_number,
+<<<<<<< HEAD
          p.pharmacist_name, u.email
        FROM pharmacy_details p
        LEFT JOIN users u ON u.id = p.user_id
+=======
+         p.pharmacist_name
+       FROM pharmacy_details p
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
        WHERE p.id != COALESCE($1::uuid, '00000000-0000-0000-0000-000000000000')
          AND (
            p.pharmacy_name ILIKE $2
@@ -2051,7 +2461,12 @@ export const searchPharmacies = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("searchPharmacies error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2143,7 +2558,12 @@ export const addGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("addGroupReport error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2201,7 +2621,12 @@ export const contributeGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("contributeGroupReport error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2242,7 +2667,12 @@ export const getGroupReports = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupReports error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2274,7 +2704,11 @@ export const getGroupReportDetail = async (req, res) => {
     const creatorPharmacyId = repRes.rows[0].pharmacy_id;
     const rowsRes = await pool.query(
       `SELECT ndc, drug_name, package_size, highest_shortage, rank,
+<<<<<<< HEAD
               pharmacy_name, sort_order
+=======
+              pharmacy_id, pharmacy_name, sort_order
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
        FROM inventory_group_report_rows
        WHERE report_id = $1
        ORDER BY (pharmacy_id = $2) DESC, pharmacy_name, sort_order`,
@@ -2282,11 +2716,21 @@ export const getGroupReportDetail = async (req, res) => {
     );
 
     // Pivot: union drugs by NDC, one value column per contributor pharmacy.
+<<<<<<< HEAD
     const pharmacies = [];
     const byNdc = new Map();
     for (const r of rowsRes.rows) {
       const name = r.pharmacy_name || "Pharmacy";
       if (!pharmacies.includes(name)) pharmacies.push(name);
+=======
+    // M25: key by pharmacy_id (not pharmacy_name) to prevent name collisions.
+    const pharmacies = []; // [{id, name}, ...]
+    const byNdc = new Map();
+    for (const r of rowsRes.rows) {
+      const pid = r.pharmacy_id || "";
+      const name = r.pharmacy_name || "Pharmacy";
+      if (!pharmacies.find((p) => p.id === pid)) pharmacies.push({ id: pid, name });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       const key = r.ndc ?? "";
       if (!byNdc.has(key)) {
         byNdc.set(key, {
@@ -2302,7 +2746,11 @@ export const getGroupReportDetail = async (req, res) => {
       if (row.drug_name == null) row.drug_name = r.drug_name;
       if (row.package_size == null) row.package_size = r.package_size;
       if (row.rank == null) row.rank = r.rank;
+<<<<<<< HEAD
       row.values[name] = r.highest_shortage;
+=======
+      row.values[pid] = r.highest_shortage;
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
 
     // Matching rule: with 2+ pharmacies show only NDCs every pharmacy has
@@ -2311,16 +2759,36 @@ export const getGroupReportDetail = async (req, res) => {
     if (pharmacies.length > 1) {
       rows = rows.filter((row) =>
         pharmacies.every((ph) =>
+<<<<<<< HEAD
           Object.prototype.hasOwnProperty.call(row.values, ph),
+=======
+          Object.prototype.hasOwnProperty.call(row.values, ph.id),
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         ),
       );
     }
 
+<<<<<<< HEAD
+=======
+    // M16/M27: cap report size to prevent OOM on huge datasets
+    const MAX_REPORT_ITEMS = 5000;
+    if (rows.length > MAX_REPORT_ITEMS) {
+      return res.status(400).json({
+        error: `Report contains ${rows.length} items which exceeds the ${MAX_REPORT_ITEMS}-item limit. Apply date or category filters to narrow the range.`,
+      });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     return res.json({ report: repRes.rows[0], pharmacies, rows });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupReportDetail error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };
 
@@ -2351,6 +2819,11 @@ export const deleteGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteGroupReport error:", err);
+<<<<<<< HEAD
     return res.status(500).json({ error: err.message });
+=======
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 };

@@ -123,7 +123,23 @@ function buildPublishEmailHtml({ name, title, category, location }) {
   `;
 }
 
+<<<<<<< HEAD
 async function sendPublishEmails({ title, category, location }) {
+=======
+async function sendPublishEmails({ id, title, category, location }) {
+  // M29: only send once — if notification_sent_at is already set, skip entirely
+  const already = await pool.query(
+    `UPDATE publishing_posts SET notification_sent_at = NOW()
+     WHERE id = $1 AND notification_sent_at IS NULL
+     RETURNING id`,
+    [id],
+  );
+  if (already.rows.length === 0) {
+    console.log(`Publish email skipped (already sent) for post ${id}`);
+    return;
+  }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   // REVIEW NOTE: local/dev safety switch. When EMAIL_TEST_TO is set in .env,
   // every publish email goes ONLY to that address and real users are never
   // queried, so testing locally can't email clients. Leave EMAIL_TEST_TO
@@ -139,7 +155,11 @@ async function sendPublishEmails({ title, category, location }) {
       `
       SELECT name, email
       FROM users
+<<<<<<< HEAD
       WHERE status = 'active'
+=======
+      WHERE status IN ('active', 'inactive')
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       `,
     );
 
@@ -202,7 +222,11 @@ async function sendPublishEmails({ title, category, location }) {
 // POST /api/publishing/posts
 // ============================================================
 
+<<<<<<< HEAD
 router.post("/posts", requireAdmin, async (req, res) => {
+=======
+router.post("/posts", express.json({ limit: "25mb" }), requireAdmin, async (req, res) => {
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   try {
     const { title, category, content, status, location } = req.body;
 
@@ -420,6 +444,14 @@ router.get("/posts/:id", requireAnyAuth, async (req, res) => {
       });
     }
 
+<<<<<<< HEAD
+=======
+    // L28: drafts are admin-only
+    if (result.rows[0].status === "Draft" && req.role !== "admin") {
+      return res.status(404).json({ success: false, message: "Post not found" });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Fetch single post error:", err);
@@ -436,7 +468,11 @@ router.get("/posts/:id", requireAnyAuth, async (req, res) => {
 // PUT /api/publishing/posts/:id
 // ============================================================
 
+<<<<<<< HEAD
 router.put("/posts/:id", requireAdmin, async (req, res) => {
+=======
+router.put("/posts/:id", express.json({ limit: "25mb" }), requireAdmin, async (req, res) => {
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   try {
     const { id } = req.params;
 
@@ -449,22 +485,38 @@ router.put("/posts/:id", requireAdmin, async (req, res) => {
       [id],
     );
 
+<<<<<<< HEAD
+=======
+    // L29: COALESCE keeps old value when a field is not sent in the request
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const result = await pool.query(
       `
       UPDATE publishing_posts
       SET
+<<<<<<< HEAD
         title = $1,
         category = $2,
         content = $3,
         status = $4,
         location = $5,
+=======
+        title    = COALESCE($1, title),
+        category = COALESCE($2, category),
+        content  = COALESCE($3, content),
+        status   = COALESCE($4, status),
+        location = COALESCE($5, location),
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         updated_at = NOW()
 
       WHERE id = $6
 
       RETURNING *
       `,
+<<<<<<< HEAD
       [title, category, content, status, location, id],
+=======
+      [title ?? null, category ?? null, content ?? null, status ?? null, location ?? null, id],
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     );
 
     if (result.rowCount === 0) {

@@ -51,6 +51,10 @@ async function validateTrialCode(code, userId) {
 
   const normalized = code.trim().toUpperCase();
 
+<<<<<<< HEAD
+=======
+  // Basic checks before attempting the atomic increment
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   const { rows } = await pool.query(
     `SELECT trial_days, active, max_redemptions, times_redeemed, expires_at
        FROM trial_codes WHERE code = $1`,
@@ -62,6 +66,10 @@ async function validateTrialCode(code, userId) {
   if (!tc.active) return { ok: false, reason: "Code is no longer active" };
   if (tc.expires_at && new Date(tc.expires_at) < new Date())
     return { ok: false, reason: "Code has expired" };
+<<<<<<< HEAD
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   if (tc.max_redemptions !== null && tc.times_redeemed >= tc.max_redemptions)
     return { ok: false, reason: "Code redemption limit reached" };
 
@@ -158,11 +166,25 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
 
     if (existing.rows.length > 0 && existing.rows[0].stripe_customer_id) {
       customerId = existing.rows[0].stripe_customer_id;
+<<<<<<< HEAD
       if (existing.rows[0].stripe_subscription_id)
         return res.status(400).json({
           error:
             "User already has an active subscription. Use update-subscription-plans to change plan.",
         });
+=======
+      if (existing.rows[0].stripe_subscription_id) {
+        // M28: also verify live with Stripe — DB row may lag a concurrent tab
+        const liveSub = await stripe.subscriptions.retrieve(
+          existing.rows[0].stripe_subscription_id,
+        ).catch(() => null);
+        if (liveSub && liveSub.status !== "canceled")
+          return res.status(400).json({
+            error:
+              "User already has an active subscription. Use update-subscription-plans to change plan.",
+          });
+      }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     } else {
       const customer = await stripe.customers.create({ email });
       customerId = customer.id;
@@ -180,6 +202,14 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       [userId, customerId, referralCode],
     );
 
+<<<<<<< HEAD
+=======
+    // L8: TODO — referral credit: look up the referrer by referralCode and
+    // increment their referral_count in users table once checkout completes.
+    // Currently the code is stored in subscriptions.referral_code but the
+    // referrer never receives credit. Implement via webhook checkout.session.completed.
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     // ─── Build subscription_data — trial ONLY when a valid code exists ─────
 
     const subscription_data = { metadata: { userId: String(userId) } };
@@ -212,8 +242,13 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       subscription_data,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url:
+<<<<<<< HEAD
         "https://www.auditprorx.com/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://www.auditprorx.com/cancel",
+=======
+        `${process.env.FRONTEND_URL}/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     });
 
     // GA4 — begin_checkout fires when the Stripe session is successfully created.
@@ -248,6 +283,10 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
 // =========================================
 
 router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
+<<<<<<< HEAD
+=======
+  const client = await pool.connect();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   try {
     const { userId, plan } = req.body;
 
@@ -265,10 +304,22 @@ router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
         .status(500)
         .json({ error: `Price ID not configured for plan: ${plan}` });
 
+<<<<<<< HEAD
     const result = await pool.query(
       `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
       [userId],
     );
+=======
+    // M21: use FOR UPDATE to prevent concurrent plan-change race conditions.
+    // The lock is held only for the initial read; we commit immediately after
+    // reading so the Stripe API calls (which are slow) don't block other writes.
+    await client.query("BEGIN");
+    const result = await client.query(
+      `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1 FOR UPDATE`,
+      [userId],
+    );
+    await client.query("COMMIT");
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     const row = result.rows[0];
     if (!row?.stripe_subscription_id)
@@ -385,8 +436,16 @@ router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
       ).toLocaleDateString()}.`,
     });
   } catch (error) {
+<<<<<<< HEAD
     console.error("❌ Update subscription error:", error);
     return res.status(500).json({ error: "Failed to update subscription" });
+=======
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("❌ Update subscription error:", error);
+    return res.status(500).json({ error: "Failed to update subscription" });
+  } finally {
+    client.release();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 });
 
@@ -418,6 +477,15 @@ router.post("/cancel-subscription", requireAnyAuth, async (req, res) => {
         .status(400)
         .json({ error: "Subscription is already canceled" });
 
+<<<<<<< HEAD
+=======
+    // M31: if a subscription schedule (downgrade) is attached, release it first
+    // so Stripe doesn't reject the cancel/update call
+    if (subscription.schedule) {
+      await stripe.subscriptionSchedules.release(subscription.schedule);
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     // ── In trial: cancel immediately, user never charged ──────────────────
     // NOTE: trial_code is intentionally NOT cleared — it stays as the
     // permanent "this user already used a trial" marker.
@@ -512,6 +580,7 @@ router.post("/cancel-subscription", requireAnyAuth, async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // =========================================
 // REACTIVATE SUBSCRIPTION (undo a pending cancel)
 // =========================================
@@ -560,6 +629,8 @@ router.post("/reactivate-subscription", requireAnyAuth, async (req, res) => {
     return res.status(500).json({ error: "Failed to reactivate subscription" });
   }
 });
+=======
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
 // =========================================
 // BILLING PORTAL

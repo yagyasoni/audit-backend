@@ -18,9 +18,20 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const storage = multer.memoryStorage();
 
+<<<<<<< HEAD
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+=======
+// L19: restrict general upload multer to images only
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (/^image\/(jpeg|jpg|png|webp|gif)$/i.test(file.mimetype)) return cb(null, true);
+    cb(new Error("Only image files are allowed"));
+  },
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 });
 
 // const requireAdmin = (req, res, next) => {
@@ -47,7 +58,12 @@ const upload = multer({
 
 router.post("/register", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { name, email, phone, password } = req.body;
+=======
+    const { name, phone, password } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     const existing = await pool.query("SELECT 1 FROM users WHERE email=$1", [
       email,
@@ -57,6 +73,13 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({ message: "User already exists" });
     }
 
+<<<<<<< HEAD
+=======
+    if (!password || password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const hash = await bcrypt.hash(password, 10);
 
     // INSERT + RETURNING (safe way)
@@ -77,7 +100,11 @@ router.post("/register", async (req, res) => {
       [email, otp],
     );
 
+<<<<<<< HEAD
     await resend.emails.send({
+=======
+    const { error: sendErr } = await resend.emails.send({
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Verify your account",
@@ -112,7 +139,11 @@ router.post("/register", async (req, res) => {
     <!-- Footer -->
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
@@ -120,6 +151,14 @@ router.post("/register", async (req, res) => {
 `,
     });
 
+<<<<<<< HEAD
+=======
+    if (sendErr) {
+      console.error("Verification email failed:", sendErr);
+      return res.status(502).json({ message: "Failed to send verification email. Please try again." });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(200).json({
       message: "OTP sent to email",
       user: user,
@@ -132,7 +171,12 @@ router.post("/register", async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email, otp, eventId, fbp, fbc } = req.body;
+=======
+    const { otp, eventId, fbp, fbc } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
@@ -198,7 +242,12 @@ router.post("/verify-otp", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email, password } = req.body;
+=======
+    const { password } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     const result = await pool.query(
       `SELECT id, name, email, phone, password, role, status, is_verified
@@ -207,7 +256,11 @@ router.post("/login", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+<<<<<<< HEAD
       return res.status(401).json({ message: "Invalid email" });
+=======
+      return res.status(401).json({ message: "Invalid email or password" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
 
     const user = result.rows[0];
@@ -219,7 +272,11 @@ router.post("/login", async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
 
     if (!valid) {
+<<<<<<< HEAD
       return res.status(401).json({ message: "Invalid password" });
+=======
+      return res.status(401).json({ message: "Invalid email or password" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
 
     if (user.role === "admin") {
@@ -236,13 +293,25 @@ router.post("/login", async (req, res) => {
         [user.email, otp],
       );
 
+<<<<<<< HEAD
       await resend.emails.send({
+=======
+      const { error: adminOtpErr } = await resend.emails.send({
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         from: process.env.EMAIL_FROM,
         to: user.email,
         subject: "Admin Login OTP",
         html: `<p>Your admin login OTP: <b>${otp}</b>. Valid for 5 minutes.</p>`,
       });
 
+<<<<<<< HEAD
+=======
+      if (adminOtpErr) {
+        console.error("Admin OTP email failed:", adminOtpErr);
+        return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+      }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       return res.status(200).json({
         message: "OTP sent to admin email",
         requiresOtp: true, // frontend uses this flag to show OTP screen
@@ -384,7 +453,11 @@ router.post("/google", async (req, res) => {
 
 router.post("/resend-otp", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email } = req.body;
+=======
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -395,7 +468,11 @@ router.post("/resend-otp", async (req, res) => {
     ]);
 
     if (user.rows.length === 0) {
+<<<<<<< HEAD
       return res.status(404).json({ message: "User not found" });
+=======
+      return res.status(200).json({ message: "If that email is registered, a new OTP has been sent" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
 
     if (user.rows[0].is_verified) {
@@ -416,7 +493,11 @@ router.post("/resend-otp", async (req, res) => {
     );
 
     // send email
+<<<<<<< HEAD
     await resend.emails.send({
+=======
+    const { error: resendOtpErr } = await resend.emails.send({
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Your new OTP",
@@ -443,7 +524,11 @@ router.post("/resend-otp", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
@@ -451,6 +536,14 @@ router.post("/resend-otp", async (req, res) => {
 `,
     });
 
+<<<<<<< HEAD
+=======
+    if (resendOtpErr) {
+      console.error("Resend OTP email failed:", resendOtpErr);
+      return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(200).json({ message: "OTP resent successfully" });
   } catch (error) {
     console.error(error);
@@ -507,7 +600,11 @@ router.get("/user-info", async (req, res) => {
 
 router.post("/forgot-password", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email } = req.body;
+=======
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -518,11 +615,21 @@ router.post("/forgot-password", async (req, res) => {
     ]);
 
     if (user.rows.length === 0) {
+<<<<<<< HEAD
       return res.status(404).json({ message: "User not found" });
+=======
+      return res.status(200).json({ message: "If that email is registered, a reset link has been sent" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     }
 
     const token = crypto.randomBytes(32).toString("hex");
 
+<<<<<<< HEAD
+=======
+    await pool.query(`DELETE FROM password_resets WHERE email = $1`, [email]);
+    await pool.query(`DELETE FROM password_resets WHERE expires_at <= NOW()`);
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     await pool.query(
       `INSERT INTO password_resets (email, token, expires_at)
        VALUES ($1,$2,NOW() + INTERVAL '15 minutes')`,
@@ -532,7 +639,11 @@ router.post("/forgot-password", async (req, res) => {
     const resetLink = `https://www.auditprorx.com/reset-password?token=${token}`;
 
     // Send email using Resend
+<<<<<<< HEAD
     await resend.emails.send({
+=======
+    const { error: forgotErr } = await resend.emails.send({
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Reset your password",
@@ -566,7 +677,11 @@ router.post("/forgot-password", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
@@ -574,6 +689,14 @@ router.post("/forgot-password", async (req, res) => {
 `,
     });
 
+<<<<<<< HEAD
+=======
+    if (forgotErr) {
+      console.error("Forgot-password email failed:", forgotErr);
+      return res.status(502).json({ message: "Failed to send reset email. Please try again." });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(200).json({ message: "Password reset link sent to email" });
   } catch (error) {
     console.error(error);
@@ -597,6 +720,13 @@ router.post("/reset-password", async (req, res) => {
 
     const email = result.rows[0].email;
 
+<<<<<<< HEAD
+=======
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const hash = await bcrypt.hash(newPassword, 10);
 
     await pool.query(`UPDATE users SET password=$1 WHERE email=$2`, [
@@ -606,6 +736,15 @@ router.post("/reset-password", async (req, res) => {
 
     await pool.query(`DELETE FROM password_resets WHERE email=$1`, [email]);
 
+<<<<<<< HEAD
+=======
+    // M19: invalidate all existing sessions so a stolen token can't stay alive
+    await pool.query(
+      `DELETE FROM refresh_tokens WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
+      [email],
+    );
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     // Send confirmation email using Resend
     await resend.emails.send({
       from: process.env.EMAIL_FROM,
@@ -630,7 +769,11 @@ router.post("/reset-password", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
@@ -1093,7 +1236,11 @@ router.post(
     <!-- Footer -->
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
@@ -1136,8 +1283,17 @@ router.put(
     try {
       const authHeader = req.headers.authorization;
       if (!authHeader) return res.status(401).json({ message: "Authorization header missing" });
+<<<<<<< HEAD
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+=======
+      let decoded;
+      try {
+        decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+      } catch (jwtErr) {
+        return res.status(401).json({ message: "Not logged in" });
+      }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       const userId = decoded.userId;
 
       const setClauses = [];
@@ -1227,6 +1383,11 @@ router.get("/pharmacy-details", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+<<<<<<< HEAD
+=======
+    if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError")
+      return res.status(401).json({ message: "Not logged in" });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -1282,8 +1443,17 @@ router.get("/pharmacy-file/:type", async (req, res) => {
       return res.status(401).json({ message: "Authorization header missing" });
     }
 
+<<<<<<< HEAD
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+=======
+    let decoded;
+    try {
+      decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+    } catch (jwtErr) {
+      return res.status(401).json({ message: "Not logged in" });
+    }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const userId = decoded.userId;
     const { type } = req.params;
 
@@ -1358,16 +1528,24 @@ router.post("/refresh-token", async (req, res) => {
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: decoded.role },
       process.env.JWT_SECRET,
+<<<<<<< HEAD
       { expiresIn: "1d" },
     );
 
     // Rotate refresh token — delete old, insert new
+=======
+      { expiresIn: "3h" },
+    );
+
+    // Rotate refresh token atomically — delete old and insert new in one transaction
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const newRefreshToken = jwt.sign(
       { userId: decoded.userId },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: "1d" },
     );
 
+<<<<<<< HEAD
     await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
       refreshToken,
     ]);
@@ -1377,6 +1555,31 @@ router.post("/refresh-token", async (req, res) => {
        VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
       [decoded.userId, newRefreshToken],
     );
+=======
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const deleted = await client.query(
+        `DELETE FROM refresh_tokens WHERE token = $1 AND expires_at > NOW() RETURNING id`,
+        [refreshToken],
+      );
+      if (deleted.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ message: "Refresh token already used or expired" });
+      }
+      await client.query(
+        `INSERT INTO refresh_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
+        [decoded.userId, newRefreshToken],
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     res.status(200).json({
       accessToken: newAccessToken,
@@ -1416,6 +1619,18 @@ router.post("/admin/refresh-token", async (req, res) => {
         .json({ message: "Refresh token revoked or expired" });
     }
 
+<<<<<<< HEAD
+=======
+    // Re-check DB: refuse if admin was removed or deactivated since login
+    const adminCheck = await pool.query(
+      `SELECT role FROM users WHERE id = $1`,
+      [decoded.userId],
+    );
+    if (!adminCheck.rows.length || adminCheck.rows[0].role !== "admin") {
+      return res.status(403).json({ message: "Admin access revoked" });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: "admin" },
       process.env.ADMIN_JWT_SECRET,
@@ -1427,6 +1642,7 @@ router.post("/admin/refresh-token", async (req, res) => {
       { expiresIn: "12h" },
     );
 
+<<<<<<< HEAD
     await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
       refreshToken,
     ]);
@@ -1435,6 +1651,31 @@ router.post("/admin/refresh-token", async (req, res) => {
        VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
       [decoded.userId, newRefreshToken],
     );
+=======
+    const adminClient = await pool.connect();
+    try {
+      await adminClient.query("BEGIN");
+      const adminDeleted = await adminClient.query(
+        `DELETE FROM refresh_tokens WHERE token = $1 AND expires_at > NOW() RETURNING id`,
+        [refreshToken],
+      );
+      if (adminDeleted.rowCount === 0) {
+        await adminClient.query("ROLLBACK");
+        return res.status(401).json({ message: "Refresh token already used or expired" });
+      }
+      await adminClient.query(
+        `INSERT INTO refresh_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
+        [decoded.userId, newRefreshToken],
+      );
+      await adminClient.query("COMMIT");
+    } catch (txErr) {
+      await adminClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      adminClient.release();
+    }
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     res
       .status(200)
@@ -1463,7 +1704,12 @@ router.post("/logout", async (req, res) => {
 
 router.post("/admin/verify-otp", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email, otp } = req.body;
+=======
+    const { otp } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     // 1. Verify the user is actually an admin
     const userResult = await pool.query(
@@ -1555,6 +1801,29 @@ router.get("/users", requireAnyAuth, async (req, res) => {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
+<<<<<<< HEAD
+=======
+    // M8: paginate admin list to avoid timeouts on large datasets
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    const whereClause = isAdmin ? "" : "WHERE u.id = $1";
+    const params = isAdmin ? [] : [ownId];
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM users u ${whereClause}`,
+      params,
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const paginatedParams = isAdmin
+      ? [limit, offset]
+      : [ownId, limit, offset];
+    const limitPlaceholders = isAdmin ? "$1" : "$2";
+    const offsetPlaceholder = isAdmin ? "$2" : "$3";
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     const result = await pool.query(
       `SELECT
          u.id,
@@ -1581,11 +1850,20 @@ router.get("/users", requireAnyAuth, async (req, res) => {
          ORDER BY created_at DESC
          LIMIT 1
        ) pd ON true
+<<<<<<< HEAD
        ${isAdmin ? "" : "WHERE u.id = $1"}
        ORDER BY u.created_at DESC`,
       isAdmin ? [] : [ownId],
     );
     res.status(200).json(result.rows);
+=======
+       ${whereClause}
+       ORDER BY u.created_at DESC
+       LIMIT ${limitPlaceholders} OFFSET ${offsetPlaceholder}`,
+      paginatedParams,
+    );
+    res.status(200).json({ users: result.rows, total, page, limit });
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ message: "Server error" });
@@ -1639,6 +1917,15 @@ router.post("/impersonate", requireAdmin, async (req, res) => {
       [user.id, refreshToken],
     );
 
+<<<<<<< HEAD
+=======
+    pool.query(
+      `INSERT INTO admin_impersonation_log (admin_id, pharmacy_user_id, created_at)
+       VALUES ($1, $2, NOW())`,
+      [req.admin.userId, user.id],
+    ).catch((err) => console.error("Impersonation log failed:", err?.message));
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(200).json({
       accessToken,
       refreshToken,
@@ -1744,7 +2031,11 @@ router.put("/user-status/:id", requireAdmin, async (req, res) => {
 // POST /auth/admin/resend-otp
 router.post("/admin/resend-otp", async (req, res) => {
   try {
+<<<<<<< HEAD
     const { email } = req.body;
+=======
+    const email = req.body.email?.toLowerCase().trim();
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
@@ -1760,7 +2051,11 @@ router.post("/admin/resend-otp", async (req, res) => {
       [email, otp],
     );
 
+<<<<<<< HEAD
     await resend.emails.send({
+=======
+    const { error: adminResendErr } = await resend.emails.send({
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Admin Login OTP (Resent)",
@@ -1787,13 +2082,25 @@ router.post("/admin/resend-otp", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
+<<<<<<< HEAD
       <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+=======
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     </div>
 
   </div>
 </div>`,
     });
 
+<<<<<<< HEAD
+=======
+    if (adminResendErr) {
+      console.error("Admin resend OTP email failed:", adminResendErr);
+      return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+    }
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     res.status(200).json({ message: "Admin OTP resent successfully" });
   } catch (error) {
     console.error(error);

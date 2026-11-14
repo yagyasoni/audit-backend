@@ -1,4 +1,8 @@
 import express from "express";
+<<<<<<< HEAD
+=======
+import rateLimit from "express-rate-limit";
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 import { uploadInventory, uploadWholesalers } from "../utils/multer.js";
 import { requireFeature } from "../middleware/auth.js";
 import {
@@ -40,13 +44,25 @@ const reports = requireFeature("inventory_reports_access");
 const drugLookup = requireFeature("drug_lookup_access");
 const inventoryView = requireFeature("inventory_view_access");
 
+<<<<<<< HEAD
+=======
+// M14: rate limit drug lookup endpoints — 60 req/min per IP
+const drugLookupRateLimit = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false });
+
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 // ============================
 // CREATE & UPDATE
 // ============================
 
+<<<<<<< HEAD
 router.get("/drug-search", drugLookup, searchDrugNames);
 router.get("/drug-lookup-global", drugLookup, getDrugLookupGlobal); // ← ADD THIS LINE
 router.get("/drug-lookup-landing", drugLookup, getDrugLookupLanding);
+=======
+router.get("/drug-search", drugLookupRateLimit, drugLookup, searchDrugNames);
+router.get("/drug-lookup-global", drugLookupRateLimit, drugLookup, getDrugLookupGlobal);
+router.get("/drug-lookup-landing", drugLookupRateLimit, drugLookup, getDrugLookupLanding);
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 // In audit.routes.js, add this line with the other audit routes:
 router.get("/ndc-suggestions", inventoryView, searchNdcSuggestions);
 
@@ -75,7 +91,11 @@ router.post(
   uploadInventoryFile,
 );
 
+<<<<<<< HEAD
 router.post("/:id/inventory/rows", reports, createInventoryRows);
+=======
+// router.post("/:id/inventory/rows", reports, createInventoryRows); // unused
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
 // ============================
 // WHOLESALERS
@@ -89,7 +109,11 @@ router.post("/:id/wholesalers", reports, uploadWholesalers.any(), uploadWholesal
 
 router.get("/", reports, getAudits);
 router.get("/:id", reports, getAuditById);
+<<<<<<< HEAD
 router.get("/:id/inventory/rows", reports, getInventoryRows);
+=======
+// router.get("/:id/inventory/rows", reports, getInventoryRows); // unused
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 router.get("/:id/report", reports, getFullReport);
 router.get("/:id/aberrant-summary", reports, getAberrantRiskSummary);
 
@@ -108,7 +132,11 @@ router.get("/:id/wholesaler-file/content", reports, serveWholesalerFile);
 router.delete("/:id", reports, deleteAudit);
 router.put("/:id/dates", reports, updateAuditDates);
 
+<<<<<<< HEAD
 router.get("/:id/drug-detail/:ndc", reports, getDrugWholesalerDetail);
+=======
+// router.get("/:id/drug-detail/:ndc", reports, getDrugWholesalerDetail); // unused
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 router.delete("/:id/wholesalers", reports, deleteWholesalerFile);
 router.get("/:id/inventory-detail/:ndc", reports, getInventoryDetail);
 router.get("/:id/wholesaler-detail/:ndc", reports, getWholesalerDetail);

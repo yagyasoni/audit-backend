@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // import app from "./app.js";
 // import { pool } from "./config/db.js";
 // import https from "https";
@@ -26,6 +27,8 @@
 
 // startServer();
 
+=======
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 import app from "./app.js";
 import { pool } from "./config/db.js";
 
@@ -40,8 +43,13 @@ async function startServer() {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
+<<<<<<< HEAD
     console.error("Database connection failed");
     console.error(err);
+=======
+    console.error("Database connection failed:", err);
+    process.exit(1); // M32: non-zero exit so the process manager restarts the server
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
 }
 

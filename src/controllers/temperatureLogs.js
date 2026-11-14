@@ -4,12 +4,22 @@ import { validateLog } from "../validators/temperatureLog.js";
 // The client token carries userId; each pharmacy is one user account.
 const pharmacyIdOf = (req) => req.user.userId;
 
+<<<<<<< HEAD
+=======
+// L35: keep all non-whitespace characters (including # and punctuation) so
+// "Fridge #1" and "Fridge 1" produce different keys and don't overwrite each other.
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 const slug = (s) =>
   String(s || "")
     .trim()
     .toLowerCase()
+<<<<<<< HEAD
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "pharmacy";
+=======
+    .replace(/\s+/g, "-")
+    || "pharmacy";
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,7 +63,11 @@ export async function save(req, res, next) {
         pharmacyIdOf(req),
         slug(setup.location),
         setup.year,
+<<<<<<< HEAD
         setup.month + 1,
+=======
+        Number(setup.month) + 1,
+>>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
         JSON.stringify(setup),
         JSON.stringify(rows),
         JSON.stringify(calibration),
