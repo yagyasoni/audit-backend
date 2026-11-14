@@ -80,11 +80,7 @@ export function requirePlan(accessKey) {
 // ── ADMIN-ONLY ───────────────────────────────────────────────
 // Use on any admin-only route.
 // Success → req.admin = { userId, role: "admin" }
-<<<<<<< HEAD
-export function requireAdmin(req, res, next) {
-=======
 export async function requireAdmin(req, res, next) {
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   const token = getBearerToken(req);
   if (!token)
     return res.status(401).json({ message: "Authorization token missing" });
@@ -93,8 +89,6 @@ export async function requireAdmin(req, res, next) {
     const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
     if (decoded.role !== "admin")
       return res.status(403).json({ message: "Admin access only" });
-<<<<<<< HEAD
-=======
     // Re-check DB so a removed/deactivated admin is refused immediately
     const { rows } = await pool.query(
       `SELECT role FROM users WHERE id = $1`,
@@ -102,7 +96,6 @@ export async function requireAdmin(req, res, next) {
     );
     if (!rows.length || rows[0].role !== "admin")
       return res.status(403).json({ message: "Admin access revoked" });
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     req.admin = decoded;
     next();
   } catch (err) {
@@ -123,19 +116,11 @@ export function requireAnyAuth(req, res, next) {
   if (!token)
     return res.status(401).json({ message: "Authorization token missing" });
 
-<<<<<<< HEAD
-  // 1) Try as a client token
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-    req.role = decoded.role || "user";
-=======
   // 1) Try as a client token — role is always "user" regardless of token payload
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     req.role = "user";
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
     return next();
   } catch (_) {
     // not a client token — fall through

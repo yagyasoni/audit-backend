@@ -25,11 +25,7 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowed = [".csv"];
   if (!allowed.includes(path.extname(file.originalname).toLowerCase())) {
-<<<<<<< HEAD
-    return cb(new Error("Only CSV, XLSX, XLS files allowed"));
-=======
     return cb(new Error("Only CSV files allowed"));
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
   }
   cb(null, true);
 };
@@ -37,10 +33,7 @@ const fileFilter = (req, file, cb) => {
 export const uploadInventory = multer({
   storage,
   fileFilter,
-<<<<<<< HEAD
-=======
   limits: { fileSize: 25 * 1024 * 1024, files: 5 },
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 });
 
 // ===== WHOLESALER UPLOAD =====
@@ -70,8 +63,5 @@ const wholesalerFileFilter = (req, file, cb) => {
 export const uploadWholesalers = multer({
   storage: wholesalerStorage,
   fileFilter: wholesalerFileFilter,
-<<<<<<< HEAD
-=======
   limits: { fileSize: 25 * 1024 * 1024, files: 10 },
->>>>>>> 4fc9c18 (Fix all medium and low priority bugs from audit PDFs)
 });
