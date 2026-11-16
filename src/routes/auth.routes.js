@@ -5,7 +5,12 @@ import { pool } from "../config/db.js";
 import { Resend } from "resend";
 import crypto from "crypto";
 import multer from "multer";
-import { requireAuth, requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireAnyAuth,
+  requireAdmin,
+  sendAccountDeleted,
+} from "../middleware/auth.js";
 import {
   loginLimits,
   signupLimits,
@@ -1589,6 +1594,14 @@ router.post("/refresh-token", async (req, res) => {
         .json({ message: "Invalid or expired refresh token" });
     }
 
+    // The account behind this session was deleted: there is nothing to
+    // renew. The reply carries the "account deleted" code so the website
+    // can explain it instead of just returning to the sign-in page.
+    const owner = await pool.query(`SELECT 1 FROM users WHERE id = $1`, [
+      decoded.userId,
+    ]);
+    if (owner.rows.length === 0) return sendAccountDeleted(res, 401);
+
     // Check it exists in DB and hasn't expired
     const result = await pool.query(
       `SELECT * FROM refresh_tokens
@@ -1886,6 +1899,13 @@ router.get("/users", requireAnyAuth, async (req, res) => {
        ${pagingClause}`,
       queryParams,
     );
+
+    // A pharmacy asks for its own row (this is what the paywall popup polls).
+    // No row means the account was deleted while this login was still open:
+    // say so, instead of an empty list the page cannot explain.
+    if (!isAdmin && result.rows.length === 0 && (!wantsPaging || offset === 0)) {
+      return sendAccountDeleted(res);
+    }
 
     if (!wantsPaging) return res.status(200).json(result.rows);
 

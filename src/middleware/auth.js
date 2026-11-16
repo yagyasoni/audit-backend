@@ -42,6 +42,23 @@ export function requireAuth(req, res, next) {
   }
 }
 
+// ── ACCOUNT DELETED ──────────────────────────────────────────
+// A browser can still be signed in when an admin deletes the account it
+// belongs to. Wherever the server notices that the account is gone it
+// answers with this one reply. The website looks for the code
+// "ACCOUNT_DELETED" and shows its "Account No Longer Exists" popup
+// (components/inactiveAccount.tsx, lib/api.ts in the frontend).
+//   403 on normal requests: the website shows the popup and keeps the page.
+//   401 from the session-renew route: there is no session to renew.
+export const ACCOUNT_DELETED_CODE = "ACCOUNT_DELETED";
+
+export function sendAccountDeleted(res, status = 403) {
+  return res.status(status).json({
+    code: ACCOUNT_DELETED_CODE,
+    message: "This account no longer exists. Please contact support.",
+  });
+}
+
 // ── PLAN GATE ────────────────────────────────────────────────
 // Use AFTER requireAuth. Refuses with 403 unless the user's subscription
 // has the given access flag (or full_access).
@@ -69,6 +86,12 @@ export function requirePlan(accessKey) {
           [req.user.userId],
         ),
       ]);
+
+      // The login is still valid but the account behind it was deleted (an
+      // admin removed it while the user was signed in). Say exactly that, so
+      // the website can show "account no longer exists" instead of a
+      // subscription or "inactive" message.
+      if (account.rows.length === 0) return sendAccountDeleted(res);
 
       // An account the admin has marked inactive cannot use the paid
       // features. The website already shows its "Account Inactive" popup
