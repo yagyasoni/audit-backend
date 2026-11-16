@@ -1,7 +1,11 @@
 import express from "express";
 import Stripe from "stripe";
 import { pool } from "../config/db.js";
-import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireAnyAuth,
+  requireAdmin,
+} from "../middleware/auth.js";
 import { getClientInfo } from "../services/metaCapi.service.js";
 
 const router = express.Router();
@@ -76,15 +80,37 @@ async function validateTrialCode(code, userId) {
 }
 
 // =========================================
+// IS A SAVED SUBSCRIPTION STILL ALIVE IN STRIPE?
+// "canceled" and "incomplete_expired" are final states: that subscription
+// can never bill again, so it does not count. A subscription Stripe no
+// longer knows is gone too.
+// =========================================
+const ENDED_SUBSCRIPTION_STATES = ["canceled", "incomplete_expired"];
+
+async function isSubscriptionAlive(stripeSubscriptionId) {
+  try {
+    const subscription =
+      await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    return !ENDED_SUBSCRIPTION_STATES.includes(subscription.status);
+  } catch (error) {
+    if (error?.code === "resource_missing") return false;
+    throw error;
+  }
+}
+
+// =========================================
 // VALIDATE TRIAL CODE (live check for the frontend)
 // Lets the pricing page show "✓ 14-day trial applied" before checkout.
 // =========================================
 
-router.post("/validate-trial-code", requireAnyAuth, async (req, res) => {
+// The pharmacy routes below always act on the logged-in user (taken from the
+// login token). A user id sent in the request body is ignored, so nobody can
+// act on another pharmacy's subscription.
+router.post("/validate-trial-code", requireAuth, async (req, res) => {
   try {
-    const { userId, code } = req.body;
-    if (!userId || !code)
-      return res.status(400).json({ error: "Missing fields: userId, code" });
+    const userId = req.user.userId;
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: "Missing fields: code" });
 
     const result = await validateTrialCode(code, userId);
 
@@ -107,11 +133,10 @@ router.post("/validate-trial-code", requireAnyAuth, async (req, res) => {
 // No code → billed from day one.
 // =========================================
 
-router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
+router.post("/create-checkout-session", requireAuth, async (req, res) => {
   try {
+    const userId = req.user.userId;
     const {
-      userId,
-      email,
       plan,
       referralCode = null,
       trialCode = null,
@@ -119,10 +144,15 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
       fbc = null,
     } = req.body;
 
-    if (!userId || !email || !plan)
-      return res
-        .status(400)
-        .json({ error: "Missing required fields: userId, email, plan" });
+    if (!plan)
+      return res.status(400).json({ error: "Missing required field: plan" });
+
+    // The email for Stripe comes from the account, not from the request.
+    const account = await pool.query(`SELECT email FROM users WHERE id = $1`, [
+      userId,
+    ]);
+    const email = account.rows[0]?.email;
+    if (!email) return res.status(404).json({ error: "Account not found" });
 
     if (!VALID_PLANS.includes(plan))
       return res.status(400).json({
@@ -156,7 +186,13 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
 
     if (existing.rows.length > 0 && existing.rows[0].stripe_customer_id) {
       customerId = existing.rows[0].stripe_customer_id;
-      if (existing.rows[0].stripe_subscription_id)
+      // A saved subscription blocks a new checkout only while it is still
+      // alive in Stripe. A subscription that was cancelled (or never
+      // completed) must not stop the customer from subscribing again.
+      if (
+        existing.rows[0].stripe_subscription_id &&
+        (await isSubscriptionAlive(existing.rows[0].stripe_subscription_id))
+      )
         return res.status(400).json({
           error:
             "User already has an active subscription. Use update-subscription-plans to change plan.",
@@ -232,12 +268,12 @@ router.post("/create-checkout-session", requireAnyAuth, async (req, res) => {
 // downgrade branch.
 // =========================================
 
-router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
+router.post("/update-subscription-plans", requireAuth, async (req, res) => {
   try {
-    const { userId, plan } = req.body;
+    const userId = req.user.userId;
+    const { plan } = req.body;
 
-    if (!userId || !plan)
-      return res.status(400).json({ error: "Missing fields: userId, plan" });
+    if (!plan) return res.status(400).json({ error: "Missing field: plan" });
 
     if (!VALID_PLANS.includes(plan))
       return res.status(400).json({
@@ -381,10 +417,9 @@ router.post("/update-subscription-plans", requireAnyAuth, async (req, res) => {
 //  Paid     → cancel at period end (access until then)
 // =========================================
 
-router.post("/cancel-subscription", requireAnyAuth, async (req, res) => {
+router.post("/cancel-subscription", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    const userId = req.user.userId;
 
     const result = await pool.query(
       `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
@@ -501,10 +536,9 @@ router.post("/cancel-subscription", requireAnyAuth, async (req, res) => {
 // REACTIVATE SUBSCRIPTION (undo a pending cancel)
 // =========================================
 
-router.post("/reactivate-subscription", requireAnyAuth, async (req, res) => {
+router.post("/reactivate-subscription", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    const userId = req.user.userId;
 
     const result = await pool.query(
       `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
@@ -550,16 +584,16 @@ router.post("/reactivate-subscription", requireAnyAuth, async (req, res) => {
 // BILLING PORTAL
 // =========================================
 
-router.post("/update-subscription", requireAnyAuth, async (req, res) => {
+router.post("/update-subscription", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId = req.user.userId;
 
     const result = await pool.query(
       `SELECT stripe_customer_id FROM subscriptions WHERE user_id = $1`,
       [userId],
     );
 
-    if (!result.rows.length)
+    if (!result.rows.length || !result.rows[0].stripe_customer_id)
       return res.status(404).json({ error: "Subscription not found" });
 
     const session = await stripe.billingPortal.sessions.create({
@@ -652,9 +686,14 @@ router.post("/admin/grant-access", requireAdmin, async (req, res) => {
 // GET SUBSCRIPTION (DB)
 // =========================================
 
+// A pharmacy always gets its own subscription, whatever id is in the URL.
+// The admin dashboard (admin login) may read any pharmacy's subscription.
+const subscriptionOwner = (req) =>
+  req.role === "admin" ? req.params.userId : req.user.userId;
+
 router.get("/subscription/:userId", requireAnyAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = subscriptionOwner(req);
     const result = await pool.query(
       `SELECT * FROM subscriptions WHERE user_id = $1`,
       [userId],
@@ -672,7 +711,7 @@ router.get("/subscription/:userId", requireAnyAuth, async (req, res) => {
 
 router.get("/stripe-subscription/:userId", requireAnyAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = subscriptionOwner(req);
 
     const result = await pool.query(
       `SELECT * FROM subscriptions WHERE user_id = $1`,

@@ -1,9 +1,15 @@
 import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
 import {
+  buildConnectRequestEmail,
   sendConnectRequestEmail,
   sendGroupInvitationEmail,
 } from "../services/inventoryViewEmail.service.js";
+
+// Connect request limits
+const CONNECT_NOTE_MAX = 2000;
+const CONNECT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -620,6 +626,21 @@ export const deleteListing = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Only the pharmacy that posted the listing, or an admin (admin login),
+    // may delete it. req.role / req.user are set by the route's login check.
+    if (req.role !== "admin") {
+      const ownerCheck = await pool.query(
+        `SELECT user_id FROM inventory_listings WHERE id = $1`,
+        [id],
+      );
+      if (ownerCheck.rows.length === 0)
+        return res.status(404).json({ error: "Listing not found" });
+      if (ownerCheck.rows[0].user_id !== req.user?.userId)
+        return res
+          .status(403)
+          .json({ error: "Not authorized to delete this listing" });
+    }
+
     const result = await pool.query(
       `DELETE FROM inventory_listings WHERE id = $1 RETURNING id`,
       [id],
@@ -946,34 +967,85 @@ export const acceptAgreement = async (req, res) => {
 export const sendConnectRequest = async (req, res) => {
   try {
     const userId = requireUser(req);
-    const {
-      listing_id,
-      seller_pharmacy_id,
-      seller_email,
-      // patient_rx,
-      quantity,
-      notes,
-      email_subject,
-      email_body,
-    } = req.body;
 
-    if (!listing_id || !seller_email || !email_subject || !email_body)
+    // The browser says only WHICH listing, HOW MANY and an optional note.
+    // Who receives the email and what it says are decided here, from the
+    // database. A receiver address, subject or text sent in the request is
+    // ignored, so this route cannot be used to email anyone anything.
+    const { listing_id, quantity, notes } = req.body;
+
+    if (!listing_id || !CONNECT_UUID_RE.test(String(listing_id)))
       return res.status(400).json({ error: "Missing required fields" });
 
-    const buyerPharmacyId = await getUserPharmacyId(userId);
+    const requestedQty = Number(quantity);
+    if (!Number.isInteger(requestedQty) || requestedQty < 1)
+      return res
+        .status(400)
+        .json({ error: "Quantity must be a positive whole number" });
 
-    const sellerUserRes = await pool.query(
-      `SELECT user_id FROM inventory_listings WHERE id = $1`,
+    const note = typeof notes === "string" ? notes : "";
+    if (note.length > CONNECT_NOTE_MAX)
+      return res.status(400).json({
+        error: `Notes are too long (maximum ${CONNECT_NOTE_MAX} characters)`,
+      });
+
+    // The listing, with its owner's contact details. Same "still available"
+    // rule as the listings page.
+    const listingRes = await pool.query(
+      `SELECT l.id, l.user_id, l.pharmacy_id, l.ndc, l.drug_name, l.strength,
+              l.lot_number, l.package_size, l.quantity,
+              p.pharmacist_name,
+              u.email AS seller_email
+         FROM inventory_listings l
+         LEFT JOIN pharmacy_details p ON p.id = l.pharmacy_id
+         LEFT JOIN users u ON u.id = l.user_id
+        WHERE l.id = $1
+          AND l.is_active = true
+          AND (l.auto_expires_at IS NULL OR l.auto_expires_at > NOW())`,
       [listing_id],
     );
-    const sellerUserId = sellerUserRes.rows[0]?.user_id || null;
+    const listing = listingRes.rows[0];
+    if (!listing)
+      return res
+        .status(404)
+        .json({ error: "This listing is no longer available" });
+    if (!listing.seller_email)
+      return res
+        .status(400)
+        .json({ error: "This listing has no contact email" });
+    if (requestedQty > listing.quantity)
+      return res
+        .status(400)
+        .json({ error: `Only ${listing.quantity} available on this listing` });
 
+    const sellerUserId = listing.user_id || null;
+    const seller_pharmacy_id = listing.pharmacy_id || null;
+    const seller_email = listing.seller_email;
+
+    // The buyer: the logged-in pharmacy.
     const buyerInfoRes = await pool.query(
-      `SELECT name, email FROM users WHERE id = $1 LIMIT 1`,
+      `SELECT u.name, u.email,
+              p.id AS pharmacy_id, p.pharmacy_name, p.pharmacist_name,
+              p.phone, p.address, p.npi_number, p.ncpdp_number
+         FROM users u
+         LEFT JOIN LATERAL (
+           SELECT * FROM pharmacy_details WHERE user_id = u.id LIMIT 1
+         ) p ON true
+        WHERE u.id = $1`,
       [userId],
     );
-    const buyerName = buyerInfoRes.rows[0]?.name || null;
-    const buyerEmail = buyerInfoRes.rows[0]?.email || null;
+    const buyer = buyerInfoRes.rows[0] || {};
+    const buyerPharmacyId = buyer.pharmacy_id || null;
+    const buyerName = buyer.name || null;
+    const buyerEmail = buyer.email || null;
+
+    const { subject: email_subject, body: email_body } =
+      buildConnectRequestEmail({
+        listing,
+        quantity: requestedQty,
+        notes: note,
+        buyer,
+      });
 
     const insertRes = await pool.query(
       `INSERT INTO inventory_connect_requests
@@ -991,8 +1063,8 @@ export const sendConnectRequest = async (req, res) => {
         seller_pharmacy_id,
         seller_email,
         // patient_rx,
-        parseInt(quantity, 10),
-        notes,
+        requestedQty,
+        note || null,
         email_subject,
         email_body,
       ],

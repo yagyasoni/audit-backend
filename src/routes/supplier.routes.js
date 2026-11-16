@@ -2,7 +2,31 @@ import express from "express";
 import { pool } from "../config/db.js";
 import crypto from "crypto";
 import { Resend } from "resend";
-import { requireFeature } from "../middleware/auth.js";
+import {
+  requireAuth,
+  requireAdmin,
+  requireAnyAuth,
+  requireFeature,
+} from "../middleware/auth.js";
+
+// ─────────────────────────────────────────────────────────────
+// Who may call what (every route here needs a login):
+//
+//   pharmacy user OR admin   GET  /suppliers
+//                            GET  /supplier-mapping-by-name/:supplierName
+//   pharmacy user only       GET  /user-suppliers/:userId
+//                            POST /user-suppliers/:userId
+//                            (always the logged-in user's own list; an admin
+//                             works on a pharmacy's list via "View as pharmacy")
+//   admin only               POST   /suppliers
+//                            DELETE /suppliers/:id
+//                            PUT    /suppliers/:id/email
+//                            GET    /supplier-mapping/:supplierId
+//                            POST   /supplier-mapping
+//
+// Guards are set per route on purpose: this router is mounted at /api, so a
+// router-wide guard would also run for every other /api/... path.
+// ─────────────────────────────────────────────────────────────
 
 const router = express.Router();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -27,7 +51,7 @@ const REQUIRED_FIELDS = [
 // ROUTE 1: GET /api/suppliers
 // Returns the master list of all supplier names
 // ─────────────────────────────────────────────────────────────
-router.get("/suppliers", async (req, res) => {
+router.get("/suppliers", requireAnyAuth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
@@ -54,9 +78,10 @@ router.get("/suppliers", async (req, res) => {
 // ROUTE 2: GET /api/user-suppliers/:userId
 // Returns the suppliers selected by a specific user
 // ─────────────────────────────────────────────────────────────
-router.get("/user-suppliers/:userId", async (req, res) => {
+router.get("/user-suppliers/:userId", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    // Always the logged-in user's own list; the id in the address is ignored.
+    const userId = req.user.userId;
     const result = await pool.query(
       `SELECT s.id, s.name
        FROM user_suppliers us
@@ -77,10 +102,11 @@ router.get("/user-suppliers/:userId", async (req, res) => {
 // Saves/replaces a user's selected suppliers
 // Body: { supplierNames: ["AXIA", "MCKESSON"] }
 // ─────────────────────────────────────────────────────────────
-router.post("/user-suppliers/:userId", async (req, res) => {
+router.post("/user-suppliers/:userId", requireAuth, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { userId } = req.params;
+    // Always the logged-in user's own list; the id in the address is ignored.
+    const userId = req.user.userId;
     const { supplierNames } = req.body;
 
     if (!Array.isArray(supplierNames)) {
@@ -180,7 +206,7 @@ router.post("/user-suppliers/:userId", async (req, res) => {
   }
 });
 
-router.post("/suppliers", async (req, res) => {
+router.post("/suppliers", requireAdmin, async (req, res) => {
   try {
     const { name, email, phone_number } = req.body;
 
@@ -197,7 +223,7 @@ router.post("/suppliers", async (req, res) => {
   }
 });
 
-router.delete("/suppliers/:id", async (req, res) => {
+router.delete("/suppliers/:id", requireAdmin, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -230,7 +256,7 @@ router.delete("/suppliers/:id", async (req, res) => {
   }
 });
 
-router.get("/supplier-mapping/:supplierId", async (req, res) => {
+router.get("/supplier-mapping/:supplierId", requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT * FROM supplier_mappings WHERE supplier_id = $1`,
@@ -243,7 +269,7 @@ router.get("/supplier-mapping/:supplierId", async (req, res) => {
   }
 });
 
-router.post("/supplier-mapping", async (req, res) => {
+router.post("/supplier-mapping", requireAdmin, async (req, res) => {
   try {
     const { supplier_id, mappings } = req.body;
 
@@ -275,7 +301,7 @@ router.post("/supplier-mapping", async (req, res) => {
   }
 });
 
-router.get("/supplier-mapping-by-name/:supplierName", async (req, res) => {
+router.get("/supplier-mapping-by-name/:supplierName", requireAnyAuth, async (req, res) => {
   try {
     const { supplierName } = req.params;
 
@@ -354,7 +380,7 @@ router.get("/bin-search", requireFeature("inventory_reports_access"), async (req
   }
 });
 
-router.put("/suppliers/:id/email", async (req, res) => {
+router.put("/suppliers/:id/email", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { email, phone_number } = req.body;

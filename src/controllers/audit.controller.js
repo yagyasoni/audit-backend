@@ -621,7 +621,10 @@ export const uploadInventoryFile = async (req, res) => {
 
     return res.status(200).json({
       message: "Inventory file uploaded successfully",
-      file: saved,
+      file: saved.file,
+      // total = data rows in the file, skipped = rows refused because they
+      // have the wrong number of columns, inserted = rows saved
+      rows: saved.rows,
       headerMapping,
       excluded: { excludeTransferred, excludeUnbilled },
     });
@@ -1271,12 +1274,15 @@ export const getCommunityData = async (req, res) => {
     const {
       includeGroups = "false",
       mode = "state",
-      userId,
       bin,
       pcn,
       grp,
       range,
     } = req.query;
+
+    // "My opportunities" is always the logged-in pharmacy's own claims. The
+    // user comes from the login token, never from the request.
+    const userId = req.role === "admin" ? undefined : req.user?.userId;
 
     const result = await auditService.getCommunityDataGlobal(ndc, {
       includeGroups: includeGroups === "true",

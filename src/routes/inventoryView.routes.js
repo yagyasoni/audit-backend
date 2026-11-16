@@ -110,7 +110,7 @@ import {
   getListingReportById,
   deleteListingReport,
 } from "../controllers/inventoryView.controller.js";
-import { requireFeature } from "../middleware/auth.js";
+import { requireFeature, requireAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -121,31 +121,16 @@ const router = express.Router();
 // admin token itself.
 router.use(requireFeature("inventory_view_access"));
 
-function requireAdmin(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token)
-    return res.status(401).json({ success: false, message: "Missing token" });
-
-  try {
-    req.admin = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
-    next();
-  } catch {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid or expired admin token" });
-  }
-}
-
 // ── Listings ────────────────────────────────────────────────
 router.get("/listings", getListings);
 router.post("/listings", createListing);
 router.patch("/listings/:id", updateListing);
 router.delete("/listings/:id", deleteListing);
 router.post("/listings/:id/report", reportListing);
-router.get("/listings/reports", getListingReports);
-router.get("/listings/reports/:id", getListingReportById);
-router.delete("/listings/reports/:id", deleteListingReport);
+// Reported listings are for the admin page only (admin login).
+router.get("/listings/reports", requireAdmin, getListingReports);
+router.get("/listings/reports/:id", requireAdmin, getListingReportById);
+router.delete("/listings/reports/:id", requireAdmin, deleteListingReport);
 
 // ── Agreement ───────────────────────────────────────────────
 router.get("/agreement/status", getAgreementStatus);

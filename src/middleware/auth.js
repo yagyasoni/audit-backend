@@ -59,11 +59,29 @@ export function requirePlan(accessKey) {
 
   return async (req, res, next) => {
     try {
-      const result = await pool.query(
-        `SELECT ${accessKey} AS allowed, full_access
-         FROM subscriptions WHERE user_id = $1`,
-        [req.user.userId],
-      );
+      const [account, result] = await Promise.all([
+        pool.query(`SELECT status FROM users WHERE id = $1`, [
+          req.user.userId,
+        ]),
+        pool.query(
+          `SELECT ${accessKey} AS allowed, full_access
+           FROM subscriptions WHERE user_id = $1`,
+          [req.user.userId],
+        ),
+      ]);
+
+      // An account the admin has marked inactive cannot use the paid
+      // features. The website already shows its "Account Inactive" popup
+      // for anything but "active"; this makes the server say the same, so
+      // the popup cannot be skipped with direct requests. Login, the token
+      // refresh and the status/subscription checks are not behind this
+      // gate, so the popup itself keeps working.
+      if (account.rows[0]?.status !== "active")
+        return res.status(403).json({
+          code: "ACCOUNT_INACTIVE",
+          message: "Your account is inactive. Please contact support.",
+        });
+
       const sub = result.rows[0];
       if (!sub?.allowed && !sub?.full_access)
         return res

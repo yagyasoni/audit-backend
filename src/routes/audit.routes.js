@@ -1,6 +1,7 @@
 import express from "express";
 import { uploadInventory, uploadWholesalers } from "../utils/multer.js";
 import { requireFeature } from "../middleware/auth.js";
+import { pool } from "../config/db.js";
 import {
   createAudit,
   updateAuditDates,
@@ -40,6 +41,39 @@ const reports = requireFeature("inventory_reports_access");
 const drugLookup = requireFeature("drug_lookup_access");
 const inventoryView = requireFeature("inventory_view_access");
 
+// ── Ownership ────────────────────────────────────────────────
+// A pharmacy may only read, change or delete its OWN reports. This runs
+// right after the plan gate on every /:id route, before any upload is
+// saved. Someone else's report answers "not found", the same as a report
+// that does not exist. The admin login passes, as it did before.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function ownAudit(req, res, next) {
+  if (req.role === "admin") return next();
+
+  const { id } = req.params;
+  if (!UUID_RE.test(String(id)))
+    return res.status(404).json({ error: "Audit not found" });
+
+  try {
+    const result = await pool.query(
+      `SELECT user_id FROM audits WHERE id = $1`,
+      [id],
+    );
+    const ownerId = result.rows[0]?.user_id;
+    if (!ownerId || ownerId !== req.user?.userId)
+      return res.status(404).json({ error: "Audit not found" });
+    return next();
+  } catch (err) {
+    console.error("Audit ownership check error:", err);
+    return res.status(500).json({ error: "Failed to check report access" });
+  }
+}
+
+const ownReports = [reports, ownAudit];
+const ownDrugLookup = [drugLookup, ownAudit];
+
 // ============================
 // CREATE & UPDATE
 // ============================
@@ -51,7 +85,7 @@ router.get("/drug-lookup-landing", drugLookup, getDrugLookupLanding);
 router.get("/ndc-suggestions", inventoryView, searchNdcSuggestions);
 
 router.post("/", reports, createAudit);
-router.patch("/:id/dates", reports, updateAuditDates);
+router.patch("/:id/dates", ownReports, updateAuditDates);
 
 // ============================
 // INVENTORY
@@ -59,7 +93,7 @@ router.patch("/:id/dates", reports, updateAuditDates);
 
 router.post(
   "/:id/inventory",
-  reports,
+  ownReports,
   (req, res, next) => {
     // uploadInventory.single("file")
     uploadInventory.fields([
@@ -75,44 +109,44 @@ router.post(
   uploadInventoryFile,
 );
 
-router.post("/:id/inventory/rows", reports, createInventoryRows);
+router.post("/:id/inventory/rows", ownReports, createInventoryRows);
 
 // ============================
 // WHOLESALERS
 // ============================
 
-router.post("/:id/wholesalers", reports, uploadWholesalers.any(), uploadWholesalerFiles);
+router.post("/:id/wholesalers", ownReports, uploadWholesalers.any(), uploadWholesalerFiles);
 
 // ============================
 // GET REPORTS
 // ============================
 
 router.get("/", reports, getAudits);
-router.get("/:id", reports, getAuditById);
-router.get("/:id/inventory/rows", reports, getInventoryRows);
-router.get("/:id/report", reports, getFullReport);
-router.get("/:id/aberrant-summary", reports, getAberrantRiskSummary);
+router.get("/:id", ownReports, getAuditById);
+router.get("/:id/inventory/rows", ownReports, getInventoryRows);
+router.get("/:id/report", ownReports, getFullReport);
+router.get("/:id/aberrant-summary", ownReports, getAberrantRiskSummary);
 
-router.get("/:id/inventory-files", reports, getInventoryFiles);
-router.get("/:id/wholesaler-files", reports, getWholesalerFiles);
+router.get("/:id/inventory-files", ownReports, getInventoryFiles);
+router.get("/:id/wholesaler-files", ownReports, getWholesalerFiles);
 
 // Serve a stored upload back: ?mode=preview → JSON rows, otherwise a CSV download.
 // Keyed by audit id / wholesaler name rather than a file row id, because a
 // re-upload replaces the row and would invalidate any id the client held.
-router.get("/:id/inventory-file/content", reports, serveInventoryFile);
-router.get("/:id/wholesaler-file/content", reports, serveWholesalerFile);
+router.get("/:id/inventory-file/content", ownReports, serveInventoryFile);
+router.get("/:id/wholesaler-file/content", ownReports, serveWholesalerFile);
 // ============================
 // DELETE
 // ============================
 
-router.delete("/:id", reports, deleteAudit);
-router.put("/:id/dates", reports, updateAuditDates);
+router.delete("/:id", ownReports, deleteAudit);
+router.put("/:id/dates", ownReports, updateAuditDates);
 
-router.get("/:id/drug-detail/:ndc", reports, getDrugWholesalerDetail);
-router.delete("/:id/wholesalers", reports, deleteWholesalerFile);
-router.get("/:id/inventory-detail/:ndc", reports, getInventoryDetail);
-router.get("/:id/wholesaler-detail/:ndc", reports, getWholesalerDetail);
+router.get("/:id/drug-detail/:ndc", ownReports, getDrugWholesalerDetail);
+router.delete("/:id/wholesalers", ownReports, deleteWholesalerFile);
+router.get("/:id/inventory-detail/:ndc", ownReports, getInventoryDetail);
+router.get("/:id/wholesaler-detail/:ndc", ownReports, getWholesalerDetail);
 router.get("/community/:ndc", reports, getCommunityData);
-router.get("/:id/drug-lookup", drugLookup, getDrugLookup);
+router.get("/:id/drug-lookup", ownDrugLookup, getDrugLookup);
 
 export default router;

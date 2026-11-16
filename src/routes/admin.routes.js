@@ -5,6 +5,7 @@
 import express from "express";
 import { pool } from "../config/db.js"; // same db.js your other routes use
 import { Resend } from "resend";
+import Stripe from "stripe";
 // import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
@@ -58,6 +59,23 @@ const reminderTemplate = ({ feedbackCount, queueCount }) => `
 `;
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// Cancels a subscription in Stripe right away (no further charges). A
+// subscription that has already ended, or that Stripe no longer knows, needs
+// nothing. Any other Stripe failure is thrown to the caller.
+async function cancelStripeSubscription(stripeSubscriptionId) {
+  try {
+    const subscription =
+      await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    if (["canceled", "incomplete_expired"].includes(subscription.status))
+      return;
+    await stripe.subscriptions.cancel(stripeSubscriptionId);
+  } catch (error) {
+    if (error?.code === "resource_missing") return;
+    throw error;
+  }
+}
 
 const router = express.Router();
 
@@ -144,6 +162,15 @@ router.delete("/users/:id", async (req, res) => {
 
     const email = userCheck.rows[0].email;
 
+    // The pharmacy's Stripe subscription, read now (before the user row is
+    // removed). It is cancelled in Stripe at the end, see step 4.
+    const subscriptionRes = await client.query(
+      "SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1",
+      [id],
+    );
+    const stripeSubscriptionId =
+      subscriptionRes.rows[0]?.stripe_subscription_id || null;
+
     // 2️⃣ Preserve FULL RX snapshot
     await client.query(
       `
@@ -179,6 +206,24 @@ router.delete("/users/:id", async (req, res) => {
     // 4️⃣ Manual cleanup
     await client.query("DELETE FROM email_otps WHERE email = $1", [email]);
     await client.query("DELETE FROM password_resets WHERE email = $1", [email]);
+
+    // 4️⃣ Stop the billing. Deleting the account without this left the
+    // Stripe subscription running, so the card kept being charged. It is the
+    // last step before the commit: if Stripe cannot be reached, nothing is
+    // deleted and the admin can simply try again.
+    if (stripeSubscriptionId) {
+      try {
+        await cancelStripeSubscription(stripeSubscriptionId);
+      } catch (stripeErr) {
+        await client.query("ROLLBACK");
+        console.error("Delete user: Stripe cancel failed:", stripeErr);
+        return res.status(502).json({
+          success: false,
+          message:
+            "Could not cancel this pharmacy's Stripe subscription, so nothing was deleted. Please try again.",
+        });
+      }
+    }
 
     await client.query("COMMIT");
 

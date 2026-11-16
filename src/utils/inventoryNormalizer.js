@@ -1,7 +1,5 @@
 import fs from "fs";
-import csv from "csv-parser";
-import { format } from "@fast-csv/format";
-import path from "path";
+import { parse } from "csv-parse/sync";
 
 // Maps frontend key -> DB column name
 const FRONT_TO_DB = {
@@ -24,79 +22,116 @@ const FRONT_TO_DB = {
   patientCopay: "patient_copay",
 };
 
-export async function normalizeInventoryCSV(inputPath, headerMapping) {
-  return new Promise((resolve, reject) => {
-    const outputPath = path.join(
-      path.dirname(inputPath),
-      path.basename(inputPath, path.extname(inputPath)) + ".normalized.csv",
+// Finds the column the user picked for a field. Exact name first, then the
+// same name ignoring upper/lower case and spaces around it. -1 = not found.
+function findColumn(headers, selectedHeader) {
+  const exact = headers.lastIndexOf(selectedHeader);
+  if (exact !== -1) return exact;
+  const wanted = selectedHeader.toLowerCase().trim();
+  return headers.findIndex((h) => h.toLowerCase().trim() === wanted);
+}
+
+// Reads an uploaded claims (inventory) CSV.
+//
+// headerMapping comes from the upload screen: { rxNumber: "<column name in
+// the file>", dateFilled: "...", ... }.
+//
+// Returns:
+//   rows        one object per usable row, keyed by database column name
+//   totalRows   data rows found in the file (the header is not counted)
+//   skippedRows rows left out because they do not have the same number of
+//               columns as the header (their values would land in the wrong
+//               fields)
+//
+// Why this reader: these exports often carry an inch mark inside a drug name
+// (GAUZE 4"X4). A strict CSV reader takes that mark as the start of a quoted
+// field and swallows the rows after it without any error. relax_quotes reads
+// such a mark as plain text, the same way the file preview already does.
+export function readInventoryCSV(inputPath, headerMapping = {}) {
+  const text = fs.readFileSync(inputPath, "utf8");
+
+  let records;
+  try {
+    records = parse(text, {
+      bom: true,
+      relax_quotes: true,
+      relax_column_count: true,
+      skip_empty_lines: true,
+      info: true,
+    });
+  } catch (err) {
+    // For example a field that starts with a quote that is never closed.
+    throw new Error(
+      `The file could not be read as a CSV (${err.message}). Nothing was changed. Please fix the file and upload it again.`,
     );
+  }
 
-    const rows = [];
-    let actualHeaders = [];
+  if (records.length === 0) {
+    throw new Error("The file is empty. Please upload a CSV with a header row.");
+  }
 
-    console.log("=== NORMALIZER START ===");
-    console.log("Input file:", inputPath);
-    console.log("headerMapping received:", JSON.stringify(headerMapping));
+  const headers = records[0].record.map((h) => String(h ?? "").trim());
+  const width = headers.length;
 
-    fs.createReadStream(inputPath)
-      .pipe(csv())
-      .on("headers", (headers) => {
-        actualHeaders = headers;
-        console.log("Actual CSV headers:", headers);
-      })
-      .on("data", (row) => {
-        const dbRow = {};
+  // Which column of the file feeds which database field.
+  const columns = [];
+  for (const [frontKey, selectedHeader] of Object.entries(headerMapping || {})) {
+    const dbKey = FRONT_TO_DB[frontKey];
+    if (!dbKey) continue;
 
-        // headerMapping = { rxNumber: "rx_number", dateFilled: "date_filled", ... }
-        // We need to find which actual CSV column corresponds to each DB field
+    // Field left unmapped on the upload screen.
+    if (
+      selectedHeader === null ||
+      selectedHeader === undefined ||
+      selectedHeader === ""
+    ) {
+      columns.push({ dbKey, index: -1 });
+      continue;
+    }
 
-        for (const [frontKey, standardValue] of Object.entries(headerMapping)) {
-          const dbKey = FRONT_TO_DB[frontKey];
-          if (!dbKey) {
-            console.warn(`No DB mapping for frontend key: ${frontKey}`);
-            continue;
-          }
+    if (typeof selectedHeader !== "string") {
+      throw new Error(
+        `The column chosen for "${frontKey}" is not valid. Please map the columns again.`,
+      );
+    }
 
-          // Find the actual CSV column that matches the standardValue
-          // standardValue is something like "rx_number", "date_filled", etc.
-          // We need to find the actual CSV header that the user selected
+    columns.push({ dbKey, index: findColumn(headers, selectedHeader) });
+  }
 
-          // The user selected a column from their file headers in the dropdown
-          // standardValue IS the actual column name from their CSV
-          // because in UploadInventoryStep, the select options are the actual file headers
+  const rows = [];
+  let totalRows = 0;
+  let skippedRows = 0;
+  let previousLine = records[0].info.lines;
 
-          const actualColValue = row[standardValue];
+  for (let i = 1; i < records.length; i++) {
+    const { record, info } = records[i];
 
-          if (actualColValue !== undefined) {
-            dbRow[dbKey] = actualColValue || null;
-          } else {
-            // Try case-insensitive match
-            const matchingKey = Object.keys(row).find(
-              (k) =>
-                k.toLowerCase().trim() === standardValue.toLowerCase().trim(),
-            );
-            dbRow[dbKey] = matchingKey ? row[matchingKey] || null : null;
-          }
-        }
+    // How many lines of the file this record used. Normally 1. More than 1
+    // means a quote swallowed line breaks, so several rows became one.
+    const linesUsed = Math.max(1, info.lines - previousLine);
+    previousLine = info.lines;
 
-        rows.push(dbRow);
-      })
-      .on("end", () => {
-        console.log(`Total rows parsed: ${rows.length}`);
-        if (rows.length > 0) {
-          console.log("First row sample:", JSON.stringify(rows[0]));
-        }
+    const extraColumnsAreEmpty =
+      record.length > width &&
+      record.slice(width).every((v) => String(v ?? "").trim() === "");
 
-        const ws = fs.createWriteStream(outputPath);
-        const csvStream = format({ headers: true });
+    if (record.length !== width && !extraColumnsAreEmpty) {
+      // Wrong number of columns: every value after the break would land in
+      // the wrong field, so the row is refused and counted.
+      totalRows += linesUsed;
+      skippedRows += linesUsed;
+      continue;
+    }
 
-        csvStream.pipe(ws);
-        rows.forEach((r) => csvStream.write(r));
-        csvStream.end();
+    totalRows += 1;
 
-        ws.on("finish", () => resolve(outputPath));
-        ws.on("error", reject);
-      })
-      .on("error", reject);
-  });
+    const dbRow = {};
+    for (const { dbKey, index } of columns) {
+      const value = index === -1 ? "" : String(record[index] ?? "").trim();
+      dbRow[dbKey] = value === "" ? null : value;
+    }
+    rows.push(dbRow);
+  }
+
+  return { rows, totalRows, skippedRows };
 }

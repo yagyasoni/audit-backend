@@ -3,10 +3,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { pool } from "../config/db.js";
 import { Resend } from "resend";
-import { OAuth2Client } from "google-auth-library";
 import crypto from "crypto";
 import multer from "multer";
-import { requireAnyAuth, requireAdmin } from "../middleware/auth.js";
+import { requireAuth, requireAnyAuth, requireAdmin } from "../middleware/auth.js";
 import {
   loginLimits,
   signupLimits,
@@ -25,7 +24,6 @@ import {
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // ── Replies shared by the email-code routes ──────────────────
 // A failed code check (see checkOtp):
@@ -120,23 +118,47 @@ router.post("/register", signupLimits, async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    const existing = await pool.query("SELECT 1 FROM users WHERE email=$1", [
-      email,
-    ]);
+    const existing = await pool.query(
+      "SELECT id, is_verified, role FROM users WHERE email=$1",
+      [email],
+    );
+    const pending = existing.rows[0];
 
-    if (existing.rowCount > 0) {
+    // A finished account (or an admin account) is never touched.
+    if (pending && (pending.is_verified || pending.role === "admin")) {
       return res.status(409).json({ message: "User already exists" });
     }
 
     const hash = await bcrypt.hash(password, 10);
 
-    // INSERT + RETURNING (safe way)
-    const userResult = await pool.query(
-      `INSERT INTO users (name,email,phone,password)
-       VALUES ($1,$2,$3,$4)
-       RETURNING id,name,email,phone,created_at`,
-      [name, email, phone, hash],
-    );
+    let userResult;
+    if (pending) {
+      // The email was signed up before but the code step was never
+      // finished. That used to be a dead end: login said "not verified" and
+      // sign-up said "already exists". Signing up again now REPLACES the
+      // unfinished sign-up (name, phone, password) and sends a new code.
+      // Only the person who knows the new password AND receives the code
+      // can finish it (see /verify-otp).
+      userResult = await pool.query(
+        `UPDATE users
+            SET name = $1, phone = $2, password = $3
+          WHERE id = $4 AND is_verified = false
+          RETURNING id,name,email,phone,created_at`,
+        [name, phone, hash, pending.id],
+      );
+      // Verified by another request in the meantime.
+      if (userResult.rowCount === 0) {
+        return res.status(409).json({ message: "User already exists" });
+      }
+    } else {
+      // INSERT + RETURNING (safe way)
+      userResult = await pool.query(
+        `INSERT INTO users (name,email,phone,password)
+         VALUES ($1,$2,$3,$4)
+         RETURNING id,name,email,phone,created_at`,
+        [name, email, phone, hash],
+      );
+    }
 
     const user = userResult.rows[0];
 
@@ -200,7 +222,7 @@ router.post("/register", signupLimits, async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   try {
-    const { email, otp, eventId, fbp, fbc } = req.body;
+    const { email, otp, password, eventId, fbp, fbc } = req.body;
 
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
@@ -210,19 +232,58 @@ router.post("/verify-otp", async (req, res) => {
     const check = await checkOtp(email, OTP_PURPOSE.SIGNUP, otp);
     if (!check.ok) return sendOtpFailure(res, check, "signup");
 
-    const verified = await pool.query(
-      `UPDATE users
-       SET is_verified = true
-       WHERE email = $1
-       RETURNING id`,
+    // The sign-up this code was sent for.
+    const pendingRes = await pool.query(
+      `SELECT id, password, is_verified FROM users WHERE email = $1`,
       [email],
     );
+    const pending = pendingRes.rows[0];
 
     // A correct code for an email with no account verifies nothing.
-    if (verified.rowCount === 0) {
+    if (!pending) {
       return res.status(400).json({
         code: "ACCOUNT_NOT_FOUND",
         message: "No account found for this email. Please sign up again.",
+      });
+    }
+
+    // This step only finishes a sign-up. It never signs in an account that
+    // is already verified.
+    if (pending.is_verified) {
+      return res.status(400).json({
+        code: "ALREADY_VERIFIED",
+        message: "This account is already verified. Please log in.",
+      });
+    }
+
+    // The page sends the sign-up password together with the code. An
+    // unfinished sign-up can be started again by anyone who types the email
+    // (see /register), which replaces its password. This check makes sure
+    // the person entering the code is the one whose password is saved: a
+    // code that arrived for somebody else's attempt cannot finish yours.
+    const samePassword =
+      typeof password === "string" &&
+      password.length > 0 &&
+      (await bcrypt.compare(password, pending.password || ""));
+    if (!samePassword) {
+      return res.status(400).json({
+        code: "SIGNUP_MISMATCH",
+        message: "This code does not match your sign-up. Please sign up again.",
+      });
+    }
+
+    const verified = await pool.query(
+      `UPDATE users
+       SET is_verified = true
+       WHERE id = $1 AND is_verified = false
+       RETURNING id, name, email, phone, role, status, is_verified`,
+      [pending.id],
+    );
+
+    if (verified.rowCount === 0) {
+      return res.status(400).json({
+        code: "ALREADY_VERIFIED",
+        message: "This account is already verified. Please log in.",
       });
     }
 
@@ -241,7 +302,40 @@ router.post("/verify-otp", async (req, res) => {
       sourceUrl: "https://www.auditprorx.com/auth",
     });
 
-    return res.status(200).json({ message: "Account verified successfully" });
+    const user = verified.rows[0];
+
+    // Admin accounts sign in through the admin login (password + emailed
+    // code) only, never through this step.
+    if (user.role === "admin") {
+      return res.status(200).json({ message: "Account verified successfully" });
+    }
+
+    // The new user is signed in from here on, with the same tokens /login
+    // issues. The rest of sign-up (pharmacy details, suppliers) needs a login.
+    const accessToken = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "3h" },
+    );
+
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_REFRESH_SECRET,
+      { expiresIn: "1d" },
+    );
+
+    await pool.query(
+      `INSERT INTO refresh_tokens (user_id, token, expires_at)
+       VALUES ($1,$2,NOW() + INTERVAL '1 day')`,
+      [user.id, refreshToken],
+    );
+
+    return res.status(200).json({
+      message: "Account verified successfully",
+      accessToken,
+      refreshToken,
+      user,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -275,6 +369,10 @@ router.post("/login", loginLimits, async (req, res) => {
     if (!valid) {
       return res.status(401).json({ message: "Invalid password" });
     }
+
+    // The password hash is not needed past this point and must never be
+    // sent to the browser (the admin reply below used to include it).
+    delete user.password;
 
     if (user.role === "admin") {
       // Password step passed: a fresh code (replaces any earlier one).
@@ -377,60 +475,9 @@ router.post("/login", loginLimits, async (req, res) => {
 //   res.status(200).json({ token });
 // });
 
-router.post("/google", async (req, res) => {
-  const { credential } = req.body;
-
-  try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-
-    const email = payload.email;
-    const name = payload.name;
-    const googleId = payload.sub;
-
-    // Check if user already exists
-    let user = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
-
-    // ❌ If user does NOT exist -> block login
-    if (user.rows.length === 0) {
-      return res.status(400).json({
-        message:
-          "Account does not exist. Please register first before using Google Sign In.",
-      });
-    }
-
-    // Optional: ensure google provider record exists
-    const provider = await pool.query(
-      `SELECT * FROM auth_providers 
-       WHERE user_id=$1 AND provider='google'`,
-      [user.rows[0].id],
-    );
-
-    if (provider.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO auth_providers
-         (user_id,provider,provider_user_id)
-         VALUES ($1,'google',$2)`,
-        [user.rows[0].id, googleId],
-      );
-    }
-
-    const token = jwt.sign(
-      { userId: user.rows[0].id, role: user.rows[0].role },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" },
-    );
-
-    res.status(200).json({ token });
-  } catch (error) {
-    console.error("Google auth error:", error);
-    res.status(500).json({ message: "Google authentication failed" });
-  }
-});
+// POST /auth/google was removed. The website has no Google button any more,
+// and the route skipped the "email verified" and "account active" checks and
+// gave an admin a login without the emailed code.
 
 router.post("/resend-otp", async (req, res) => {
   try {
@@ -654,6 +701,15 @@ router.post("/reset-password", async (req, res) => {
 
     await pool.query(`DELETE FROM password_resets WHERE email=$1`, [email]);
 
+    // End every saved session of this account. Whoever was logged in before
+    // the reset (on any device) can no longer renew their login and has to
+    // sign in again with the new password.
+    await pool.query(
+      `DELETE FROM refresh_tokens
+        WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+      [email],
+    );
+
     // Send confirmation email using Resend
     await resend.emails.send({
       from: process.env.EMAIL_FROM,
@@ -866,8 +922,11 @@ router.post("/reset-password", async (req, res) => {
 //   }
 // });
 
+// Needs a user login. requireAuth runs BEFORE the upload middleware, so a
+// request without a login is refused before any file is read into memory.
 router.post(
   "/pharmacy",
+  requireAuth,
   upload.fields([
     { name: "licenseFile", maxCount: 1 },
     { name: "deaFile", maxCount: 1 },
@@ -883,8 +942,11 @@ router.post(
   ]),
   async (req, res) => {
     try {
+      // The details are saved for the logged-in user. A userId sent in the
+      // form is ignored.
+      const userId = req.user.userId;
+
       const {
-        userId,
         pharmacyName,
         address,
         phone,

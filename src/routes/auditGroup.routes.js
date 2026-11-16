@@ -14,6 +14,32 @@ router.use(requireFeature("inventory_view_access"));
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// The acting user always comes from the login token. A user id sent in the
+// request body or in the URL is ignored, so nobody can act as someone else.
+const actingUserId = (req) => req.user.userId;
+
+// The caller's role in a group: "admin", "member", or null when the caller
+// is not in the group.
+async function groupRole(groupId, userId) {
+  const result = await pool.query(
+    `SELECT role
+       FROM audit_share_group_users
+      WHERE group_id = $1
+        AND user_id = $2`,
+    [groupId, userId],
+  );
+  return result.rows[0]?.role || null;
+}
+
+// Names typed by users go into the invite email. Make them plain text first.
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 //
 // ============================================================
 // CREATE GROUP
@@ -23,9 +49,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 router.post("/", async (req, res) => {
   try {
-    const { name, created_by } = req.body;
+    const { name } = req.body;
+    const created_by = actingUserId(req);
 
-    if (!name || !created_by) {
+    if (!name) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -91,12 +118,22 @@ router.post("/", async (req, res) => {
 
 router.post("/invite", async (req, res) => {
   try {
-    const { group_id, invited_by, email } = req.body;
+    const { group_id, email } = req.body;
+    const invited_by = actingUserId(req);
 
-    if (!group_id || !invited_by || !email) {
+    if (!group_id || !email) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
+      });
+    }
+
+    // Only an admin of this group may invite (the page shows the Invite
+    // button to group admins only).
+    if ((await groupRole(group_id, invited_by)) !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only group admins can invite members",
       });
     }
 
@@ -274,7 +311,7 @@ router.post("/invite", async (req, res) => {
       <div style="padding:24px; color:#1f2937;">
 
         <p style="margin-bottom:16px;">
-          Hello ${invitedUser.name || "there"},
+          Hello ${escapeHtml(invitedUser.name || "there")},
         </p>
 
         <p style="margin-bottom:16px;">
@@ -284,7 +321,7 @@ router.post("/invite", async (req, res) => {
         <div style="border:1px solid #e2e8f0; border-radius:8px; padding:18px; margin:20px 0;">
 
           <h2 style="margin:0 0 10px 0; color:#0f172a;">
-            ${groupName}
+            ${escapeHtml(groupName)}
           </h2>
 
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
@@ -313,10 +350,10 @@ router.post("/invite", async (req, res) => {
               Invited by
             </p>
             <p style="margin:6px 0 0 0; font-size:15px; font-weight:600; color:#0f172a;">
-              ${inviterPharmacyName}
+              ${escapeHtml(inviterPharmacyName)}
             </p>
             <p style="margin:2px 0 0 0; font-size:13px; color:#2563eb;">
-              ${inviterEmail}
+              ${escapeHtml(inviterEmail)}
             </p>
           </div>
 
@@ -384,9 +421,10 @@ router.post("/invite", async (req, res) => {
 
 router.post("/invite/accept", async (req, res) => {
   try {
-    const { invite_id, user_id } = req.body;
+    const { invite_id } = req.body;
+    const user_id = actingUserId(req);
 
-    if (!invite_id || !user_id) {
+    if (!invite_id) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
@@ -414,6 +452,23 @@ router.post("/invite/accept", async (req, res) => {
     }
 
     const invite = inviteResult.rows[0];
+
+    // An invite can be accepted only by the account it was sent to.
+    let isInvitedUser = invite.invited_user_id === user_id;
+    if (!isInvitedUser && !invite.invited_user_id) {
+      const me = await pool.query(`SELECT email FROM users WHERE id = $1`, [
+        user_id,
+      ]);
+      isInvitedUser =
+        String(me.rows[0]?.email || "").toLowerCase() ===
+        String(invite.email || "").toLowerCase();
+    }
+    if (!isInvitedUser) {
+      return res.status(403).json({
+        success: false,
+        message: "This invite belongs to another account",
+      });
+    }
 
     if (invite.status !== "pending") {
       return res.status(400).json({
@@ -477,7 +532,7 @@ router.post("/invite/accept", async (req, res) => {
 
 router.get("/user/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = actingUserId(req);
 
     const result = await pool.query(
       `
@@ -530,7 +585,7 @@ router.get("/user/:userId", async (req, res) => {
 
 router.get("/invites/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = actingUserId(req);
 
     // const result = await pool.query(
     //   `
@@ -591,6 +646,13 @@ router.get("/:groupId/members", async (req, res) => {
   try {
     const { groupId } = req.params;
 
+    if (!(await groupRole(groupId, actingUserId(req)))) {
+      return res.status(403).json({
+        success: false,
+        message: "Not a member of this group",
+      });
+    }
+
     const result = await pool.query(
       `
       SELECT
@@ -641,7 +703,7 @@ router.delete("/:groupId/member/:memberUserId", async (req, res) => {
   try {
     const { groupId, memberUserId } = req.params;
 
-    const { current_user_id } = req.body;
+    const current_user_id = actingUserId(req);
 
     //
     // CHECK ADMIN
@@ -712,7 +774,8 @@ router.delete("/:groupId/member/:memberUserId", async (req, res) => {
 
 router.delete("/:groupId/leave/:userId", async (req, res) => {
   try {
-    const { groupId, userId } = req.params;
+    const { groupId } = req.params;
+    const userId = actingUserId(req);
 
     //
     // CHECK MEMBER
@@ -786,7 +849,7 @@ router.delete("/:groupId", async (req, res) => {
   try {
     const { groupId } = req.params;
 
-    const { current_user_id } = req.body;
+    const current_user_id = actingUserId(req);
 
     if (!current_user_id) {
       return res.status(400).json({

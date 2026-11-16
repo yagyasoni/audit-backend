@@ -3,7 +3,8 @@ import fs from "fs";
 import path from "path";
 import { Resend } from "resend";
 import { pool } from "../config/db.js";
-import { normalizeInventoryCSV } from "../utils/inventoryNormalizer.js";
+import { readInventoryCSV } from "../utils/inventoryNormalizer.js";
+import { parseAmount } from "../utils/number.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -83,11 +84,17 @@ function toDbHeaderMapping(frontMapping = {}) {
   return out;
 }
 
-const cleanNumber = (v) => {
-  if (v === null || v === undefined || v === "") return null;
-  const s = String(v).trim();
-  const n = Number(s.replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? n : null;
+// One shared number reader for uploaded files (see utils/number.js).
+const cleanNumber = (v) => parseAmount(v);
+
+// Deletes an upload from disk. Never throws: a file that cannot be removed
+// must not turn a finished upload into an error.
+const removeFileQuietly = (filePath) => {
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (e) {
+    console.warn("Failed to delete file:", filePath, e.message);
+  }
 };
 
 const cleanInt = (v) => {
@@ -243,93 +250,140 @@ export const saveInventoryFile = async (
 ) => {
   const { excludeTransferred = false, excludeUnbilled = false } = options;
 
-  const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
-    auditId,
-  ]);
-  if (auditCheck.rows.length === 0) throw new Error("Audit not found");
+  const uploadDir = path.join(process.cwd(), "uploads/inventory");
+  const filePath = path.join(uploadDir, filename);
 
-  await pool.query(
-    `UPDATE audits SET exclude_transferred = $2, exclude_unbilled = $3 WHERE id = $1`,
-    [auditId, excludeTransferred, excludeUnbilled],
-  );
-
-  // ✅ Clean old inventory data (replace behavior)
-  await pool.query(`DELETE FROM inventory_rows WHERE audit_id = $1`, [auditId]);
-  const oldInvFiles = await pool.query(
-    `SELECT file_name FROM audit_inventory_files WHERE audit_id = $1`,
-    [auditId],
-  );
-  for (const row of oldInvFiles.rows) {
-    const oldPath = path.join(
-      process.cwd(),
-      "uploads/inventory",
-      row.file_name,
-    );
-    try {
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-    } catch (e) {}
-  }
-  await pool.query(`DELETE FROM audit_inventory_files WHERE audit_id = $1`, [
-    auditId,
-  ]);
-
-  const result = await pool.query(
-    `
-    INSERT INTO audit_inventory_files (audit_id, file_name, status_header)
-    VALUES ($1, $2, $3)
-    RETURNING *
-    `,
-    [auditId, filename, headerMapping?.status || null],
-  );
-
-  const filePath = path.join(process.cwd(), "uploads/inventory", filename);
-  const dbHeaderMapping = toDbHeaderMapping(headerMapping);
-  console.log("Normalizing file:", filePath);
-  console.log("Header mapping:", headerMapping);
-  console.log("Exclusions:", { excludeTransferred, excludeUnbilled });
-
-  let normalizedPath;
+  // ── STEP 1: read and check the NEW file. Nothing is deleted yet. ──
+  // The old rows and the old file used to be deleted before the new file
+  // was read, so a file that failed left the report empty. Now a file that
+  // cannot be read changes nothing: the report keeps its current data.
+  let filteredRecords;
+  let stats;
   try {
-    normalizedPath = await normalizeInventoryCSV(filePath, headerMapping);
-    console.log("Normalized file created:", normalizedPath);
+    const auditCheck = await pool.query(
+      "SELECT id FROM audits WHERE id = $1",
+      [auditId],
+    );
+    if (auditCheck.rows.length === 0) throw new Error("Audit not found");
+
+    console.log("Reading file:", filePath);
+    console.log("Header mapping:", headerMapping);
+    console.log("Exclusions:", { excludeTransferred, excludeUnbilled });
+
+    const { rows: records, totalRows, skippedRows } = readInventoryCSV(
+      filePath,
+      headerMapping,
+    );
+
+    console.log(
+      `Total rows parsed: ${records.length} (skipped ${skippedRows} of ${totalRows})`,
+    );
+
+    if (records.length === 0 && skippedRows > 0) {
+      throw new Error(
+        "No row in this file could be read: every row has a different number of columns than the header. Nothing was changed.",
+      );
+    }
+
+    // ── ✅ Apply status filters ──
+    filteredRecords = records.filter((r) => {
+      const status = String(r.status || "")
+        .trim()
+        .toUpperCase();
+      if (status === "F") return false; // always excluded (business rule)
+      if (excludeTransferred && status === "T") return false;
+      if (excludeUnbilled && status === "U") return false;
+      return true;
+    });
+
+    const droppedCount = records.length - filteredRecords.length;
+    console.log(
+      `After exclusions: ${filteredRecords.length} rows (dropped ${droppedCount})`,
+    );
+
+    stats = {
+      total: totalRows, // data rows in the file
+      skipped: skippedRows, // refused: wrong number of columns
+      excluded: droppedCount, // left out by the status rules
+      inserted: filteredRecords.length,
+    };
   } catch (e) {
-    console.error("NORMALIZATION FAILED:", e);
+    console.error("INVENTORY FILE REFUSED:", e);
+    removeFileQuietly(filePath); // the new upload is not kept
     throw e;
   }
 
-  const normalizedContent = fs.readFileSync(normalizedPath, "utf-8");
-  const records = parse(normalizedContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
+  // ── STEP 2: swap old for new in ONE database step. ──
+  // Either everything below is saved, or nothing is.
+  const client = await pool.connect();
+  let fileRecord;
+  let oldFileNames = [];
+  let notifyQueue = null;
+  try {
+    await client.query("BEGIN");
 
-  console.log("Total rows parsed:", records.length);
+    // One upload at a time per report. A second upload sent at the same
+    // moment waits here, then replaces the first, instead of both inserting
+    // their rows (which doubled the data).
+    await client.query(`SELECT id FROM audits WHERE id = $1 FOR UPDATE`, [
+      auditId,
+    ]);
 
-  // ── ✅ Apply status filters ──
-  const filteredRecords = records.filter((r) => {
-    const status = String(r.status || "")
-      .trim()
-      .toUpperCase();
-    if (status === "F") return false; // always excluded (business rule)
-    if (excludeTransferred && status === "T") return false;
-    if (excludeUnbilled && status === "U") return false;
-    return true;
-  });
+    await client.query(
+      `UPDATE audits SET exclude_transferred = $2, exclude_unbilled = $3 WHERE id = $1`,
+      [auditId, excludeTransferred, excludeUnbilled],
+    );
 
-  const droppedCount = records.length - filteredRecords.length;
-  console.log(
-    `After exclusions: ${filteredRecords.length} rows (dropped ${droppedCount})`,
-  );
+    // ✅ Clean old inventory data (replace behavior)
+    await client.query(`DELETE FROM inventory_rows WHERE audit_id = $1`, [
+      auditId,
+    ]);
+    const oldInvFiles = await client.query(
+      `DELETE FROM audit_inventory_files WHERE audit_id = $1 RETURNING file_name`,
+      [auditId],
+    );
+    oldFileNames = oldInvFiles.rows.map((row) => row.file_name);
 
-  if (filteredRecords.length > 0) {
-    console.log("First row sample:", JSON.stringify(filteredRecords[0]));
-    await insertInventoryRows(auditId, filteredRecords);
+    const result = await client.query(
+      `
+      INSERT INTO audit_inventory_files (audit_id, file_name, status_header)
+      VALUES ($1, $2, $3)
+      RETURNING *
+      `,
+      [auditId, filename, headerMapping?.status || null],
+    );
+    fileRecord = result.rows[0];
+
+    if (filteredRecords.length > 0) {
+      console.log("First row sample:", JSON.stringify(filteredRecords[0]));
+      const inserted = await insertInventoryRows(
+        auditId,
+        filteredRecords,
+        client,
+      );
+      notifyQueue = inserted.notifyQueue || null;
+    }
+
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    removeFileQuietly(filePath); // the new upload is not kept
+    throw e;
+  } finally {
+    client.release();
   }
+
+  // ── STEP 3: the new data is saved. Now the old files can go. ──
+  for (const oldName of oldFileNames) {
+    if (oldName && oldName !== filename) {
+      removeFileQuietly(path.join(uploadDir, oldName));
+    }
+  }
+  if (notifyQueue) notifyQueue();
 
   await refreshAuditStatus(auditId);
 
-  return result.rows[0];
+  return { file: fileRecord, rows: stats };
 };
 
 // ── BULK INSERT with chunking (max 1000 rows per query to stay under 65,535 param limit) ──
@@ -471,14 +525,23 @@ export const saveInventoryFile = async (
 //   }
 // };
 
-export const insertInventoryRows = async (auditId, rows) => {
+export const insertInventoryRows = async (
+  auditId,
+  rows,
+  existingClient = null,
+) => {
   if (!rows.length) return { inserted: 0 };
 
-  const client = await pool.connect();
+  // With no client given, this function opens and commits its own
+  // transaction. A caller that is already inside a transaction (the file
+  // upload, which swaps old rows for new ones in one step) passes its client;
+  // then nothing is committed here.
+  const ownTransaction = !existingClient;
+  const client = existingClient || (await pool.connect());
   const CHUNK_SIZE = 1000; // 1000 rows × 18 cols = 18,000 params — safe
 
   try {
-    await client.query("BEGIN");
+    if (ownTransaction) await client.query("BEGIN");
 
     // =========================================
     // NDC SHEET SYNC (one set-based statement)
@@ -529,18 +592,20 @@ export const insertInventoryRows = async (auditId, rows) => {
           cleanDate(r.date_filled),
           r.drug_name || null,
           // r.quantity ? parseInt(r.quantity) : null,
-          r.quantity ? cleanNumber(r.quantity) : null,
+          // Numbers go through parseAmount: it reads "1,234.56", "$45.10"
+          // and "(5)" correctly, and gives null (never NaN) for text.
+          parseAmount(r.quantity),
           r.package_size || null,
           r.primary_bin || null,
           r.primary_pcn || null,
           r.primary_group || null,
-          r.primary_paid ? parseFloat(r.primary_paid) : null,
+          parseAmount(r.primary_paid),
           r.secondary_bin || null,
           r.secondary_pcn || null,
           r.secondary_group || null,
-          r.secondary_paid ? parseFloat(r.secondary_paid) : null,
+          parseAmount(r.secondary_paid),
           r.brand || null,
-          r.patient_copay ? parseFloat(r.patient_copay) : null,
+          parseAmount(r.patient_copay),
         );
         return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18})`;
       });
@@ -593,7 +658,10 @@ export const insertInventoryRows = async (auditId, rows) => {
 
     const newQueueRows = queueInsertResult.rows;
 
-    if (newQueueRows.length > 0) {
+    // The summary email goes out only once the rows are really saved: after
+    // the COMMIT below, or after the caller's own commit.
+    const notifyQueue = () => {
+      if (newQueueRows.length === 0) return;
       // 🔥 SEND ONE EMAIL (summary)
       resend.emails
         .send({
@@ -635,185 +703,198 @@ export const insertInventoryRows = async (auditId, rows) => {
     `,
         })
         .catch(console.error);
+    };
+
+    if (!ownTransaction) {
+      // The caller commits, then calls notifyQueue().
+      return { inserted: rows.length, notifyQueue };
     }
 
     await client.query("COMMIT");
+    notifyQueue();
     console.log(`✅ All ${rows.length} inventory rows inserted`);
     return { inserted: rows.length };
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (ownTransaction) await client.query("ROLLBACK");
     throw err;
   } finally {
-    client.release();
+    if (ownTransaction) client.release();
   }
 };
 
 export const saveWholesalerFiles = async (auditId, filesArray) => {
-  const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
-    auditId,
-  ]);
-  if (auditCheck.rows.length === 0) throw new Error("Audit not found");
+  const uploadDir = path.join(process.cwd(), "uploads/wholesalers");
+  const newPaths = filesArray.map((f) => path.join(uploadDir, f.file_name));
 
-  // ❌ REMOVED: the old blanket delete that wiped EVERY wholesaler file
-  //    for this audit before each upload. That destroyed previously-uploaded
-  //    files whenever the user uploaded a new batch.
-  //
-  //    await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [auditId]);
-  //    await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [auditId]);
-  //
-  // ✅ NEW: per-wholesaler replace. Each wholesaler being uploaded clears
-  //    ONLY its own previous file/rows, leaving every other wholesaler
-  //    on this audit untouched.
-
-  const results = [];
-
-  for (const fileObj of filesArray) {
-    // ── Per-wholesaler cleanup (replace just this wholesaler) ──
-    const existingFiles = await pool.query(
-      `SELECT id, file_name
-         FROM wholesaler_files
-        WHERE audit_id = $1
-          AND wholesaler_name = $2`,
-      [auditId, fileObj.wholesaler_name],
+  // ── STEP 1: read and check every NEW file. Nothing is deleted yet. ──
+  // The old rows and the old file of a wholesaler used to be deleted before
+  // the new file was read, so a file that failed left that wholesaler empty.
+  // Now a file that cannot be read changes nothing.
+  let prepared;
+  try {
+    const auditCheck = await pool.query(
+      "SELECT id FROM audits WHERE id = $1",
+      [auditId],
     );
+    if (auditCheck.rows.length === 0) throw new Error("Audit not found");
 
-    for (const oldFile of existingFiles.rows) {
-      // 1) delete child rows for this specific file
-      await pool.query(
-        `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
-        [oldFile.id],
-      );
-      // 2) delete the file record
-      await pool.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
-        oldFile.id,
-      ]);
-      // 3) remove the physical file from disk
-      const oldPath = path.join(
-        process.cwd(),
-        "uploads/wholesalers",
-        oldFile.file_name,
-      );
+    prepared = filesArray.map((fileObj) => {
+      const filePath = path.join(uploadDir, fileObj.file_name);
+      if (!fs.existsSync(filePath)) {
+        console.warn("Wholesaler file not found:", filePath);
+        return { fileObj, rows: [] };
+      }
+
+      const content = fs.readFileSync(filePath, "utf-8");
+      let records;
       try {
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      } catch (e) {
-        console.warn(
-          "Failed to delete old wholesaler file:",
-          oldPath,
-          e.message,
+        records = parse(content, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        });
+      } catch (err) {
+        throw new Error(
+          `${fileObj.wholesaler_name}: the file could not be read as a CSV (${err.message}). Nothing was changed. Please fix the file and upload it again.`,
         );
       }
-    }
 
-    // ── Insert the new file record ──
-    const fileInsert = await pool.query(
-      `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [auditId, fileObj.wholesaler_name, fileObj.file_name],
-    );
+      const mapping = fileObj.headerMapping || {};
+      console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
+      if (records.length > 0) {
+        const testInvoice = mapping.invoiceDate
+          ? records[0][mapping.invoiceDate]
+          : "NO_MAPPING_KEY";
+        console.log("INVOICE DATE DEBUG:", {
+          mappingKey: mapping.invoiceDate,
+          rawValue: testInvoice,
+          cleaned: mapping.invoiceDate
+            ? cleanDate(records[0][mapping.invoiceDate])
+            : null,
+          csvHeaders: Object.keys(records[0]),
+        });
+      }
+      console.log(
+        "SAMPLE ROW KEYS:",
+        records.length > 0 ? Object.keys(records[0]) : [],
+      );
+      console.log(
+        "SAMPLE ROW:",
+        records.length > 0 ? JSON.stringify(records[0]) : "empty",
+      );
 
-    const wholesalerFileId = fileInsert.rows[0].id;
+      // One array per row, in the column order of the INSERT below
+      // (after audit_id and wholesaler_file_id).
+      const rows = records.map((row) => {
+        const ndc = mapping.ndcNumber ? (row[mapping.ndcNumber] ?? null) : null;
+        const invoiceDate = mapping.invoiceDate
+          ? (row[mapping.invoiceDate] ?? null)
+          : null;
+        const productName = mapping.itemDescription
+          ? (row[mapping.itemDescription] ?? null)
+          : null;
+        const quantity =
+          mapping.quantity &&
+          row[mapping.quantity] !== undefined &&
+          row[mapping.quantity] !== ""
+            ? (cleanNumber(row[mapping.quantity]) ?? 0)
+            : null;
+        // Costs go through the shared number reader: "-250.00" and
+        // "(250.00)" stay negative (credits and returns are not purchases),
+        // and text such as "N/A" becomes empty instead of "not a number".
+        const unitCost =
+          mapping.unitPrice && row[mapping.unitPrice]
+            ? parseAmount(row[mapping.unitPrice])
+            : null;
+        const totalCost =
+          mapping.totalPrice && row[mapping.totalPrice]
+            ? parseAmount(row[mapping.totalPrice])
+            : null;
 
-    const filePath = path.join(
-      process.cwd(),
-      "uploads/wholesalers",
-      fileObj.file_name,
-    );
-    if (!fs.existsSync(filePath)) {
-      console.warn("Wholesaler file not found:", filePath);
-      results.push(fileInsert.rows[0]);
-      continue;
-    }
-
-    const content = fs.readFileSync(filePath, "utf-8");
-    const records = parse(content, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    });
-
-    const mapping = fileObj.headerMapping || {};
-    console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
-    if (records.length > 0) {
-      const testInvoice = mapping.invoiceDate
-        ? records[0][mapping.invoiceDate]
-        : "NO_MAPPING_KEY";
-      console.log("INVOICE DATE DEBUG:", {
-        mappingKey: mapping.invoiceDate,
-        rawValue: testInvoice,
-        cleaned: mapping.invoiceDate
-          ? cleanDate(records[0][mapping.invoiceDate])
-          : null,
-        csvHeaders: Object.keys(records[0]),
+        return [
+          ndc,
+          productName,
+          quantity,
+          unitCost,
+          totalCost,
+          cleanDate(invoiceDate),
+        ];
       });
-    }
-    console.log(
-      "SAMPLE ROW KEYS:",
-      records.length > 0 ? Object.keys(records[0]) : [],
-    );
-    console.log(
-      "SAMPLE ROW:",
-      records.length > 0 ? JSON.stringify(records[0]) : "empty",
-    );
 
-    if (records.length === 0) {
-      results.push(fileInsert.rows[0]);
-      continue;
-    }
+      return { fileObj, rows };
+    });
+  } catch (e) {
+    console.error("WHOLESALER FILE REFUSED:", e);
+    newPaths.forEach(removeFileQuietly); // the new uploads are not kept
+    throw e;
+  }
 
-    // ── BULK INSERT wholesaler rows in chunks (unchanged) ──
-    const CHUNK_SIZE = 1000;
-    const client = await pool.connect();
+  // ── STEP 2: swap old for new in ONE database step. ──
+  // Either every file of this upload is saved, or nothing is changed.
+  //
+  // Per-wholesaler replace: each wholesaler being uploaded clears ONLY its
+  // own previous file/rows, leaving every other wholesaler on this audit
+  // untouched.
+  const CHUNK_SIZE = 1000;
+  const client = await pool.connect();
+  const results = [];
+  const removedNames = []; // files whose record was deleted
+  const keptNames = new Set(); // files whose record exists after this upload
 
-    try {
-      await client.query("BEGIN");
+  try {
+    await client.query("BEGIN");
 
-      for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-        const chunk = records.slice(i, i + CHUNK_SIZE);
+    // One upload at a time per report. A second upload sent at the same
+    // moment waits here, then replaces the first, instead of both inserting
+    // their rows (which doubled the data).
+    await client.query(`SELECT id FROM audits WHERE id = $1 FOR UPDATE`, [
+      auditId,
+    ]);
+
+    for (const { fileObj, rows } of prepared) {
+      const existingFiles = await client.query(
+        `SELECT id, file_name
+           FROM wholesaler_files
+          WHERE audit_id = $1
+            AND wholesaler_name = $2`,
+        [auditId, fileObj.wholesaler_name],
+      );
+
+      for (const oldFile of existingFiles.rows) {
+        // 1) delete child rows for this specific file
+        await client.query(
+          `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
+          [oldFile.id],
+        );
+
+        // 2) delete the file record
+        await client.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
+          oldFile.id,
+        ]);
+
+        // 3) the physical file is removed after the commit (step 3)
+        removedNames.push(oldFile.file_name);
+        keptNames.delete(oldFile.file_name);
+      }
+
+      // ── Insert the new file record ──
+      const fileInsert = await client.query(
+        `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
+         VALUES ($1, $2, $3) RETURNING *`,
+        [auditId, fileObj.wholesaler_name, fileObj.file_name],
+      );
+
+      const wholesalerFileId = fileInsert.rows[0].id;
+      keptNames.add(fileObj.file_name);
+
+      // ── BULK INSERT wholesaler rows in chunks ──
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const chunk = rows.slice(i, i + CHUNK_SIZE);
         const values = [];
 
         const placeholders = chunk.map((row, idx) => {
           const base = idx * 8;
-
-          const ndc = mapping.ndcNumber
-            ? (row[mapping.ndcNumber] ?? null)
-            : null;
-          const invoiceDate = mapping.invoiceDate
-            ? (row[mapping.invoiceDate] ?? null)
-            : null;
-          const productName = mapping.itemDescription
-            ? (row[mapping.itemDescription] ?? null)
-            : null;
-          const quantity =
-            mapping.quantity &&
-            row[mapping.quantity] !== undefined &&
-            row[mapping.quantity] !== ""
-              // ? (cleanInt(row[mapping.quantity]) ?? 0)
-                ? (cleanNumber(row[mapping.quantity]) ?? 0)
-              : null;
-          const unitCost =
-            mapping.unitPrice && row[mapping.unitPrice]
-              ? parseFloat(
-                  String(row[mapping.unitPrice]).replace(/[^0-9.]/g, ""),
-                )
-              : null;
-          const totalCost =
-            mapping.totalPrice && row[mapping.totalPrice]
-              ? parseFloat(
-                  String(row[mapping.totalPrice]).replace(/[^0-9.]/g, ""),
-                )
-              : null;
-
-          values.push(
-            auditId,
-            wholesalerFileId,
-            ndc,
-            productName,
-            quantity,
-            unitCost,
-            totalCost,
-            cleanDate(invoiceDate),
-          );
-
+          values.push(auditId, wholesalerFileId, ...row);
           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
         });
 
@@ -826,23 +907,34 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
         console.log(
           `✅ Wholesaler chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(
-            records.length / CHUNK_SIZE,
+            rows.length / CHUNK_SIZE,
           )} inserted for ${fileObj.wholesaler_name}`,
         );
       }
 
-      await client.query("COMMIT");
-      console.log(
-        `✅ All ${records.length} wholesaler rows inserted for ${fileObj.wholesaler_name}`,
-      );
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
+      if (rows.length > 0) {
+        console.log(
+          `✅ All ${rows.length} wholesaler rows inserted for ${fileObj.wholesaler_name}`,
+        );
+      }
+
+      results.push(fileInsert.rows[0]);
     }
 
-    results.push(fileInsert.rows[0]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    newPaths.forEach(removeFileQuietly); // the new uploads are not kept
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // ── STEP 3: the new data is saved. Now the old files can go. ──
+  for (const oldName of removedNames) {
+    if (oldName && !keptNames.has(oldName)) {
+      removeFileQuietly(path.join(uploadDir, oldName));
+    }
   }
 
   await refreshAuditStatus(auditId);
@@ -1410,7 +1502,8 @@ export const getCommunityDataGlobal = async (
   joins = ` INNER JOIN audits a ON a.id = i.audit_id `;
 
   // ✅ User filter only in opportunities mode
-  if (mode === "opportunities" && userId) {
+  const ownClaimsOnly = mode === "opportunities" && Boolean(userId);
+  if (ownClaimsOnly) {
     filters += ` AND a.user_id = $${paramIndex}`;
     params.push(userId);
     paramIndex++;
@@ -1432,7 +1525,10 @@ export const getCommunityDataGlobal = async (
       )::numeric, 2) AS avg_ins_paid_per_unit
 
       ${
-        includeGroups
+        // Rx numbers leave the server only for the caller's own claims
+        // (opportunities mode is filtered to that pharmacy above). In the
+        // community modes the rows mix every pharmacy's claims.
+        includeGroups && ownClaimsOnly
           ? `, ARRAY_AGG(DISTINCT i.rx_number)
                FILTER (WHERE i.rx_number IS NOT NULL) AS rx_numbers`
           : ""

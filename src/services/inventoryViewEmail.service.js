@@ -128,6 +128,65 @@ const getClient = () => {
   return resendClient;
 };
 
+// ── Connect request: subject and text ───────────────────────
+// Written here, on the server, from database values. The page shows the
+// buyer a preview with the same wording (EmailDraftModal in
+// app/InventoryView/page.tsx); keep the two in step when the text changes.
+//   listing : inventory_listings row + the seller's pharmacist_name
+//   buyer   : the logged-in user's account + pharmacy_details
+export const buildConnectRequestEmail = ({
+  listing,
+  quantity,
+  notes,
+  buyer,
+}) => {
+  const drug = `${listing.drug_name}${
+    listing.strength ? " " + listing.strength : ""
+  }`;
+  const buyerPharmacy = buyer.pharmacy_name || "Your Pharmacy";
+  const buyerContact = buyer.pharmacist_name || "Pharmacist";
+  const buyerEmail = buyer.email || "";
+
+  const subject = `Inventory inquiry: ${drug}`;
+
+  const lines = [
+    `Dear ${listing.pharmacist_name || "Pharmacist-in-Charge"},`,
+    "",
+    `I am reaching out regarding your listing for ${drug} (NDC ${listing.ndc}).`,
+    "",
+    "We have a patient with an active prescription that we are unable to fill from current stock and would like to discuss arranging a inventory transfer under DSCSA.",
+    "",
+    "REQUEST DETAILS",
+    "───────────────",
+    `Drug:           ${drug}`,
+    `NDC:            ${listing.ndc}`,
+    `Lot Number:     ${listing.lot_number || "—"}`,
+    `Quantity Need:  ${quantity}${
+      listing.package_size ? " (" + listing.package_size + ")" : ""
+    }`,
+    "Patient Rx:     ",
+    notes ? "\nNotes: " + notes + "\n" : "",
+    "BUYER PHARMACY",
+    "──────────────",
+    `Pharmacy:       ${buyerPharmacy}`,
+    `PIC / Contact:  ${buyerContact}`,
+    `Email:          ${buyerEmail}`,
+    `Phone:          ${buyer.phone || "—"}`,
+    `Address:        ${buyer.address || ""}`,
+    `NPI:            ${buyer.npi_number || "—"}`,
+    `NCPDP:          ${buyer.ncpdp_number || "—"}`,
+    "",
+    "Please confirm availability at your earliest convenience. ",
+    "",
+    "Thank you,",
+    buyerContact,
+    buyerPharmacy,
+    buyerEmail,
+  ];
+
+  return { subject, body: lines.join("\n") };
+};
+
 export const sendConnectRequestEmail = async ({
   to,
   subject,

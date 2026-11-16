@@ -90,6 +90,14 @@ router.post(
           console.log("METADATA:", subscription.metadata);
           console.log("=================================");
 
+          // A subscription that has ended is handled like a cancel, whatever
+          // event reports it. This also stops a late event for an OLD, ended
+          // subscription from overwriting a newer one the customer bought.
+          if (hasEnded(subscription.status)) {
+            await revokeSubscription(subscription.id);
+            break;
+          }
+
           await syncSubscription(subscription);
 
           // Record the trial-code redemption (idempotent).
@@ -133,21 +141,43 @@ router.post(
         }
 
         // =====================================
-        // PAYMENT FAILED → mark past_due
+        // PAYMENT FAILED → no access until it is paid
+        // Stripe's own status decides: "past_due" / "unpaid" lose access
+        // here, and get it back through invoice.paid when the payment
+        // goes through. The plan label is kept so the customer still sees
+        // which plan is waiting for payment.
         // =====================================
 
         case "invoice.payment_failed": {
           const invoice = event.data.object;
           if (!invoice.subscription) break;
 
-          await pool.query(
-            `UPDATE subscriptions
-             SET status='past_due', updated_at=NOW()
-             WHERE stripe_subscription_id = $1`,
-            [invoice.subscription],
+          const subscription = await stripe.subscriptions.retrieve(
+            invoice.subscription,
           );
 
-          console.log(`⚠️  Payment failed — sub: ${invoice.subscription}`);
+          if (hasEnded(subscription.status)) {
+            await revokeSubscription(subscription.id);
+            break;
+          }
+
+          // Stripe still counts it as paid (for example a retry has already
+          // succeeded): nothing to take away.
+          if (hasPaidAccess(subscription.status)) break;
+
+          await pool.query(
+            `UPDATE subscriptions
+             SET status=$2,
+                 inventory_reports_access=false, inventory_view_access=false,
+                 drug_lookup_access=false, leads_access=false, full_access=false,
+                 updated_at=NOW()
+             WHERE stripe_subscription_id = $1`,
+            [subscription.id, subscription.status],
+          );
+
+          console.log(
+            `⚠️  Payment failed — sub: ${subscription.id} (${subscription.status}), access paused`,
+          );
           break;
         }
 
@@ -160,19 +190,7 @@ router.post(
         case "customer.subscription.deleted": {
           const subscription = event.data.object;
 
-          await pool.query(
-            `UPDATE subscriptions
-             SET status='canceled', subscription_type='none',
-                 inventory_reports_access=false, inventory_view_access=false,
-                 drug_lookup_access=false, leads_access=false, full_access=false,
-                 active_price_ids=ARRAY[]::TEXT[], cancel_at_period_end=false,
-                 trial_end=NULL, grace_period_end=NULL, pending_plan=NULL,
-                 updated_at=NOW()
-             WHERE stripe_subscription_id = $1`,
-            [subscription.id],
-          );
-
-          console.log(`🚫 Subscription canceled — sub: ${subscription.id}`);
+          await revokeSubscription(subscription.id);
           break;
         }
 
@@ -187,6 +205,47 @@ router.post(
     }
   },
 );
+
+// =========================================
+// SUBSCRIPTION STATES (Stripe's own words)
+//   paid access : "active" or "trialing" only. "past_due", "unpaid",
+//                 "incomplete" and "paused" mean nobody is paying right now.
+//   ended       : "canceled" / "incomplete_expired" can never bill again.
+// =========================================
+
+const PAID_STATES = ["active", "trialing"];
+const ENDED_STATES = ["canceled", "incomplete_expired"];
+
+const hasPaidAccess = (status) => PAID_STATES.includes(status);
+const hasEnded = (status) => ENDED_STATES.includes(status);
+
+// =========================================
+// REVOKE AN ENDED SUBSCRIPTION
+// Removes all access AND forgets the subscription id, so the customer can
+// subscribe again (checkout refuses while a subscription id is saved).
+// The Stripe customer id is kept, so a new subscription reuses the same
+// customer. Matching on the subscription id means an event for an old
+// subscription never touches a newer one.
+// NOTE: trial_code is intentionally KEPT, so the user can't get a second
+// free trial after canceling.
+// =========================================
+
+async function revokeSubscription(stripeSubscriptionId) {
+  await pool.query(
+    `UPDATE subscriptions
+     SET status='canceled', subscription_type='none',
+         stripe_subscription_id=NULL,
+         inventory_reports_access=false, inventory_view_access=false,
+         drug_lookup_access=false, leads_access=false, full_access=false,
+         active_price_ids=ARRAY[]::TEXT[], cancel_at_period_end=false,
+         trial_end=NULL, grace_period_end=NULL, pending_plan=NULL,
+         updated_at=NOW()
+     WHERE stripe_subscription_id = $1`,
+    [stripeSubscriptionId],
+  );
+
+  console.log(`🚫 Subscription canceled — sub: ${stripeSubscriptionId}`);
+}
 
 // =========================================
 // FINALIZE TRIAL CODE REDEMPTION
@@ -271,6 +330,17 @@ async function syncSubscription(subscription) {
     else if (inventory_view_access) subscriptionType = "professional";
     else if (inventory_reports_access) subscriptionType = "base";
 
+    // Access is given only while Stripe says the subscription is paid
+    // (active or in trial). An unpaid subscription keeps its plan label
+    // above, but every access flag is off until the payment goes through.
+    if (!hasPaidAccess(subscription.status)) {
+      inventory_reports_access = false;
+      inventory_view_access = false;
+      drug_lookup_access = false;
+      leads_access = false;
+      full_access = false;
+    }
+
     const trialEnd = subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
       : null;
@@ -344,6 +414,11 @@ async function syncSubscription(subscription) {
     console.error("❌ syncSubscription error:", error);
     if (error?.detail) console.error("DETAIL:", error.detail);
     if (error?.constraint) console.error("CONSTRAINT:", error.constraint);
+    // Pass the failure on. The webhook then answers Stripe with an error,
+    // and Stripe sends the event again later. Swallowing it here made the
+    // webhook answer "OK" while nothing was saved: the customer was charged
+    // and never got access.
+    throw error;
   }
 }
 
