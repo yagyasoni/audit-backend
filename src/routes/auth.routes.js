@@ -20,10 +20,40 @@ import {
   signAdminOtpToken,
   readAdminOtpToken,
 } from "../services/emailOtp.service.js";
+import { sendGA4Event } from "../services/ga4mp.service.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const router = express.Router();
+
+// ── Emails are not case-sensitive ────────────────────────────
+// "John@x.com" at sign-up and "john@x.com" at login are the same account.
+// What the user typed is trimmed and lower-cased, and the lookup compares
+// LOWER(email), so accounts that were stored with capital letters before
+// this rule keep working without any change to the database. New accounts
+// are stored in lower case.
+const normalizeEmail = (value) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+// SQL: "the account with this email" ($1 = normalized email). If old data
+// holds one address twice in different case, the verified account wins,
+// then the older one.
+const BY_EMAIL = `LOWER(email) = $1 ORDER BY is_verified DESC, created_at ASC LIMIT 1`;
+
+// ── Session tokens ───────────────────────────────────────────
+// Session (refresh) tokens carry a random "jti". Without it, two tokens made
+// for the same user in the same second are the exact same text, so "use the
+// old key up and hand out a new one" would hand out the old key again.
+
+// The same password rule the sign-up page shows: at least 8 characters with
+// an upper-case letter, a lower-case letter, a number and one of @$!%*?&#.
+// (app/auth/AuthClient.tsx validatePassword and app/reset-password.)
+const PASSWORD_RULE =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+const PASSWORD_RULE_MESSAGE =
+  "Password must be at least 8 characters and include an upper-case letter, a lower-case letter, a number and a special character (@$!%*?&#).";
+const isValidPassword = (value) =>
+  typeof value === "string" && PASSWORD_RULE.test(value);
 
 // ── Replies shared by the email-code routes ──────────────────
 // A failed code check (see checkOtp):
@@ -86,9 +116,30 @@ function sendAdminLoginExpired(res) {
 
 const storage = multer.memoryStorage();
 
+// Pharmacy documents (licence, DEA, insurance, ...). These are scans and
+// PDFs, so PDF, images and Word files are accepted; anything else (programs,
+// scripts, archives) is refused. Both the type the browser reports and the
+// file ending must be on the list.
+const DOCUMENT_TYPES =
+  /^(application\/pdf|image\/(jpeg|jpg|png|webp|gif|heic|heif)|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/i;
+const DOCUMENT_ENDINGS = /\.(pdf|jpe?g|png|webp|gif|heic|heif|docx?)$/i;
+
 const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    if (
+      DOCUMENT_TYPES.test(file.mimetype || "") &&
+      DOCUMENT_ENDINGS.test(file.originalname || "")
+    )
+      return cb(null, true);
+    cb(
+      Object.assign(
+        new Error("Only PDF, image (JPG, PNG) or Word files are allowed"),
+        { status: 400, expose: true },
+      ),
+    );
+  },
 });
 
 // const requireAdmin = (req, res, next) => {
@@ -116,10 +167,15 @@ const upload = multer({
 // Limited to 5 sign-ups per hour from one internet address.
 router.post("/register", signupLimits, async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, phone, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
 
     const existing = await pool.query(
-      "SELECT id, is_verified, role FROM users WHERE email=$1",
+      `SELECT id, is_verified, role FROM users WHERE ${BY_EMAIL}`,
       [email],
     );
     const pending = existing.rows[0];
@@ -127,6 +183,10 @@ router.post("/register", signupLimits, async (req, res) => {
     // A finished account (or an admin account) is never touched.
     if (pending && (pending.is_verified || pending.role === "admin")) {
       return res.status(409).json({ message: "User already exists" });
+    }
+
+    if (!isValidPassword(password)) {
+      return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -165,7 +225,7 @@ router.post("/register", signupLimits, async (req, res) => {
     // Start of the sign-up flow: always a fresh code.
     const { otp } = await issueOtp(email, OTP_PURPOSE.SIGNUP, { force: true });
 
-    await resend.emails.send({
+    const { error: sendErr } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Verify your account",
@@ -200,13 +260,18 @@ router.post("/register", signupLimits, async (req, res) => {
     <!-- Footer -->
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
-      <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+
     </div>
 
   </div>
 </div>
 `,
     });
+
+    if (sendErr) {
+      console.error("Verification email failed:", sendErr);
+      return res.status(502).json({ message: "Failed to send verification email. Please try again." });
+    }
 
     res.status(200).json({
       message: "OTP sent to email",
@@ -222,7 +287,8 @@ router.post("/register", signupLimits, async (req, res) => {
 
 router.post("/verify-otp", async (req, res) => {
   try {
-    const { email, otp, password, eventId, fbp, fbc } = req.body;
+    const { otp, password, eventId, fbp, fbc } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     if (!email || !otp) {
       return res.status(400).json({ message: "Email and OTP are required" });
@@ -234,7 +300,7 @@ router.post("/verify-otp", async (req, res) => {
 
     // The sign-up this code was sent for.
     const pendingRes = await pool.query(
-      `SELECT id, password, is_verified FROM users WHERE email = $1`,
+      `SELECT id, password, is_verified FROM users WHERE ${BY_EMAIL}`,
       [email],
     );
     const pending = pendingRes.rows[0];
@@ -304,6 +370,16 @@ router.post("/verify-otp", async (req, res) => {
 
     const user = verified.rows[0];
 
+    // GA4 Measurement Protocol — qualify_lead fires on verified account creation.
+    // clientId comes from the _ga cookie value sent by the frontend.
+    const { clientId: ga4ClientId } = req.body;
+    sendGA4Event({
+      eventName: "qualify_lead",
+      clientId: ga4ClientId,
+      userId: user.id,
+      params: { method: "email" },
+    });
+
     // Admin accounts sign in through the admin login (password + emailed
     // code) only, never through this step.
     if (user.role === "admin") {
@@ -317,13 +393,11 @@ router.post("/verify-otp", async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "3h" },
     );
-
     const refreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, jti: crypto.randomUUID() },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: "1d" },
     );
-
     await pool.query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at)
        VALUES ($1,$2,NOW() + INTERVAL '1 day')`,
@@ -346,16 +420,17 @@ router.post("/verify-otp", async (req, res) => {
 // one internet address.
 router.post("/login", loginLimits, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     const result = await pool.query(
       `SELECT id, name, email, phone, password, role, status, is_verified
-       FROM users WHERE email=$1`,
+       FROM users WHERE ${BY_EMAIL}`,
       [email],
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ message: "Invalid email" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const user = result.rows[0];
@@ -367,7 +442,7 @@ router.post("/login", loginLimits, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
 
     if (!valid) {
-      return res.status(401).json({ message: "Invalid password" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     // The password hash is not needed past this point and must never be
@@ -380,12 +455,17 @@ router.post("/login", loginLimits, async (req, res) => {
         force: true,
       });
 
-      await resend.emails.send({
+      const { error: adminOtpErr } = await resend.emails.send({
         from: process.env.EMAIL_FROM,
         to: user.email,
         subject: "Admin Login OTP",
         html: `<p>Your admin login OTP: <b>${otp}</b>. Valid for 5 minutes.</p>`,
       });
+
+      if (adminOtpErr) {
+        console.error("Admin OTP email failed:", adminOtpErr);
+        return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+      }
 
       return res.status(200).json({
         message: "OTP sent to admin email",
@@ -406,7 +486,7 @@ router.post("/login", loginLimits, async (req, res) => {
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, jti: crypto.randomUUID() },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: "1d" },
     );
@@ -481,18 +561,18 @@ router.post("/login", loginLimits, async (req, res) => {
 
 router.post("/resend-otp", async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
 
-    const user = await pool.query("SELECT * FROM users WHERE email=$1", [
+    const user = await pool.query(`SELECT * FROM users WHERE ${BY_EMAIL}`, [
       email,
     ]);
 
     if (user.rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(200).json({ message: "If that email is registered, a new OTP has been sent" });
     }
 
     if (user.rows[0].is_verified) {
@@ -506,7 +586,7 @@ router.post("/resend-otp", async (req, res) => {
     const otp = issued.otp;
 
     // send email
-    await resend.emails.send({
+    const { error: resendOtpErr } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Your new OTP",
@@ -533,13 +613,18 @@ router.post("/resend-otp", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
-      <a href="#" style="color:#64748b;">Unsubscribe</a>
+
     </div>
 
   </div>
 </div>
 `,
     });
+
+    if (resendOtpErr) {
+      console.error("Resend OTP email failed:", resendOtpErr);
+      return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+    }
 
     res.status(200).json({
       message: "OTP resent successfully",
@@ -602,21 +687,27 @@ router.get("/user-info", async (req, res) => {
 // internet address.
 router.post("/forgot-password", forgotPasswordLimits, async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
 
-    const user = await pool.query("SELECT * FROM users WHERE email=$1", [
+    const user = await pool.query(`SELECT * FROM users WHERE ${BY_EMAIL}`, [
       email,
     ]);
 
     if (user.rows.length === 0) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(200).json({ message: "If that email is registered, a reset link has been sent" });
     }
 
     const token = crypto.randomBytes(32).toString("hex");
+
+    // A new link cancels the older ones for this address; expired rows go too.
+    await pool.query(`DELETE FROM password_resets WHERE LOWER(email) = $1`, [
+      email,
+    ]);
+    await pool.query(`DELETE FROM password_resets WHERE expires_at <= NOW()`);
 
     await pool.query(
       `INSERT INTO password_resets (email, token, expires_at)
@@ -627,7 +718,7 @@ router.post("/forgot-password", forgotPasswordLimits, async (req, res) => {
     const resetLink = `https://www.auditprorx.com/reset-password?token=${token}`;
 
     // Send email using Resend
-    await resend.emails.send({
+    const { error: forgotErr } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Reset your password",
@@ -661,13 +752,18 @@ router.post("/forgot-password", forgotPasswordLimits, async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
-      <a href="#" style="color:#64748b;">Unsubscribe</a>
+
     </div>
 
   </div>
 </div>
 `,
     });
+
+    if (forgotErr) {
+      console.error("Forgot-password email failed:", forgotErr);
+      return res.status(502).json({ message: "Failed to send reset email. Please try again." });
+    }
 
     res.status(200).json({ message: "Password reset link sent to email" });
   } catch (error) {
@@ -692,21 +788,32 @@ router.post("/reset-password", async (req, res) => {
 
     const email = result.rows[0].email;
 
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_RULE_MESSAGE });
+    }
+
     const hash = await bcrypt.hash(newPassword, 10);
 
-    await pool.query(`UPDATE users SET password=$1 WHERE email=$2`, [
-      hash,
+    // LOWER() on both sides: the reset row holds the lower-case address, the
+    // account may have been stored with capital letters.
+    const updated = await pool.query(
+      `UPDATE users SET password=$1 WHERE LOWER(email)=LOWER($2) RETURNING id`,
+      [hash, email],
+    );
+    if (updated.rowCount === 0) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    await pool.query(`DELETE FROM password_resets WHERE LOWER(email)=LOWER($1)`, [
       email,
     ]);
-
-    await pool.query(`DELETE FROM password_resets WHERE email=$1`, [email]);
 
     // End every saved session of this account. Whoever was logged in before
     // the reset (on any device) can no longer renew their login and has to
     // sign in again with the new password.
     await pool.query(
       `DELETE FROM refresh_tokens
-        WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+        WHERE user_id IN (SELECT id FROM users WHERE LOWER(email) = LOWER($1))`,
       [email],
     );
 
@@ -734,7 +841,7 @@ router.post("/reset-password", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx<br/>
-      <a href="#" style="color:#64748b;">Unsubscribe</a>
+
     </div>
 
   </div>
@@ -988,108 +1095,164 @@ router.post(
       const suretyBondFile = req.files?.suretyBondFile?.[0]?.buffer || null;
       const voidedChequeFile = req.files?.voidedChequeFile?.[0]?.buffer || null;
 
-      const result = await pool.query(
-        `INSERT INTO pharmacy_details(
-          user_id,
-          pharmacy_name,
-          address,
-          phone,
-          fax,
-          ncpdp_number,
-          npi_number,
+      // One value per column, in the order used by both statements below.
+      const detailValues = [
+        userId,
+        pharmacyName,
+        address,
+        phone,
+        fax,
+        ncpdpNumber,
+        npiNumber,
 
-          pharmacy_license_number,
-          license_expiry_date,
-          license_file,
+        pharmacyLicenseNumber,
+        licenseExpiryDate,
+        licenseFile,
 
-          dea_number,
-          dea_expiry_date,
-          dea_file,
+        deaNumber,
+        deaExpiryDate,
+        deaFile,
 
-          cds_number,
-          cds_expiry,
-          cds_file,
+        cdsNumber,
+        cdsExpiry,
+        cdsFile,
 
-          pharmacist_name,
-          pharmacist_license_number,
-          pharmacist_expiration,
-          pharmacist_file,
+        pharmacistName,
+        pharmacistLicenseNumber,
+        pharmacistExpiration,
+        pharmacistFile,
 
-          cmea_expiry,
-          cmea_file,
+        cmeaExpiry,
+        cmeaFile,
 
-          ein_number,
-          ein_file,
+        einNumber,
+        einFile,
 
-          liability_insurance_file,
-          insurance_expiration,
+        liabilityInsuranceFile,
+        insuranceExpiration,
 
-          workers_comp_file,
-          workers_comp_expiration,
+        workersCompFile,
+        workersCompExpiration,
 
-          surety_bond_file,
-          surety_bond_expiration,
+        suretyBondFile,
+        suretyBondExpiration,
 
-          voided_cheque_file
-        )
-        VALUES(
-          $1,$2,$3,$4,$5,$6,$7,
-          $8,$9,$10,
-          $11,$12,$13,
-          $14,$15,$16,
-          $17,$18,$19,$20,
-          $21,$22,
-          $23,$24,
-          $25,$26,
-          $27,$28,
-          $29,$30,
-          $31
-        )
-        RETURNING *`,
-        [
-          userId,
-          pharmacyName,
-          address,
-          phone,
-          fax,
-          ncpdpNumber,
-          npiNumber,
+        voidedChequeFile,
+      ];
 
-          pharmacyLicenseNumber,
-          licenseExpiryDate,
-          licenseFile,
-
-          deaNumber,
-          deaExpiryDate,
-          deaFile,
-
-          cdsNumber,
-          cdsExpiry,
-          cdsFile,
-
-          pharmacistName,
-          pharmacistLicenseNumber,
-          pharmacistExpiration,
-          pharmacistFile,
-
-          cmeaExpiry,
-          cmeaFile,
-
-          einNumber,
-          einFile,
-
-          liabilityInsuranceFile,
-          insuranceExpiration,
-
-          workersCompFile,
-          workersCompExpiration,
-
-          suretyBondFile,
-          suretyBondExpiration,
-
-          voidedChequeFile,
-        ],
+      // Sending the form again updates the pharmacy's details instead of
+      // adding a second row. This is done with a look-up first, not with
+      // "ON CONFLICT (user_id)": that needs a unique rule on user_id, which
+      // the table does not have, and the save would fail for everyone.
+      // A document that is not sent again keeps the one already stored.
+      const existingDetails = await pool.query(
+        `SELECT id FROM pharmacy_details
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [userId],
       );
+
+      let result;
+      if (existingDetails.rows.length > 0) {
+        result = await pool.query(
+          `UPDATE pharmacy_details SET
+             pharmacy_name             = $2,
+             address                   = $3,
+             phone                     = $4,
+             fax                       = $5,
+             ncpdp_number              = $6,
+             npi_number                = $7,
+             pharmacy_license_number   = $8,
+             license_expiry_date       = $9,
+             license_file              = COALESCE($10, license_file),
+             dea_number                = $11,
+             dea_expiry_date           = $12,
+             dea_file                  = COALESCE($13, dea_file),
+             cds_number                = $14,
+             cds_expiry                = $15,
+             cds_file                  = COALESCE($16, cds_file),
+             pharmacist_name           = $17,
+             pharmacist_license_number = $18,
+             pharmacist_expiration     = $19,
+             pharmacist_file           = COALESCE($20, pharmacist_file),
+             cmea_expiry               = $21,
+             cmea_file                 = COALESCE($22, cmea_file),
+             ein_number                = $23,
+             ein_file                  = COALESCE($24, ein_file),
+             liability_insurance_file  = COALESCE($25, liability_insurance_file),
+             insurance_expiration      = $26,
+             workers_comp_file         = COALESCE($27, workers_comp_file),
+             workers_comp_expiration   = $28,
+             surety_bond_file          = COALESCE($29, surety_bond_file),
+             surety_bond_expiration    = $30,
+             voided_cheque_file        = COALESCE($31, voided_cheque_file)
+           WHERE id = $32 AND user_id = $1
+           RETURNING *`,
+          [...detailValues, existingDetails.rows[0].id],
+        );
+      } else {
+        result = await pool.query(
+          `INSERT INTO pharmacy_details(
+            user_id,
+            pharmacy_name,
+            address,
+            phone,
+            fax,
+            ncpdp_number,
+            npi_number,
+
+            pharmacy_license_number,
+            license_expiry_date,
+            license_file,
+
+            dea_number,
+            dea_expiry_date,
+            dea_file,
+
+            cds_number,
+            cds_expiry,
+            cds_file,
+
+            pharmacist_name,
+            pharmacist_license_number,
+            pharmacist_expiration,
+            pharmacist_file,
+
+            cmea_expiry,
+            cmea_file,
+
+            ein_number,
+            ein_file,
+
+            liability_insurance_file,
+            insurance_expiration,
+
+            workers_comp_file,
+            workers_comp_expiration,
+
+            surety_bond_file,
+            surety_bond_expiration,
+
+            voided_cheque_file
+          )
+          VALUES(
+            $1,$2,$3,$4,$5,$6,$7,
+            $8,$9,$10,
+            $11,$12,$13,
+            $14,$15,$16,
+            $17,$18,$19,$20,
+            $21,$22,
+            $23,$24,
+            $25,$26,
+            $27,$28,
+            $29,$30,
+            $31
+          )
+          RETURNING *`,
+          detailValues,
+        );
+      }
 
       const emailResult = await pool.query(
         `SELECT email FROM users WHERE id = $1`,
@@ -1172,7 +1335,7 @@ router.post(
     <!-- Footer -->
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
-      <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+
     </div>
 
   </div>
@@ -1188,6 +1351,63 @@ router.post(
         message: "Pharmacy details saved successfully",
         data: result.rows[0],
       });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Server error" });
+    }
+  },
+);
+
+const FILE_COLUMN_MAP = {
+  licenseFile:          "license_file",
+  deaFile:              "dea_file",
+  cdsFile:              "cds_file",
+  pharmacistFile:       "pharmacist_file",
+  cmeaFile:             "cmea_file",
+  einFile:              "ein_file",
+  liabilityInsuranceFile: "liability_insurance_file",
+  workersCompFile:      "workers_comp_file",
+  suretyBondFile:       "surety_bond_file",
+  voidedChequeFile:     "voided_cheque_file",
+};
+
+// Replace one or more stored documents. The login is checked BEFORE the
+// upload, so a request without a login is refused before any file is read
+// into memory. The documents belong to the logged-in user.
+router.put(
+  "/pharmacy",
+  requireAuth,
+  upload.fields(Object.keys(FILE_COLUMN_MAP).map((name) => ({ name, maxCount: 1 }))),
+  async (req, res) => {
+    try {
+      const userId = req.user.userId;
+
+      const setClauses = [];
+      const values = [];
+
+      for (const [fieldName, column] of Object.entries(FILE_COLUMN_MAP)) {
+        const buf = req.files?.[fieldName]?.[0]?.buffer;
+        if (buf) {
+          values.push(buf);
+          setClauses.push(`"${column}" = $${values.length}`);
+        }
+      }
+
+      if (setClauses.length === 0) {
+        return res.status(400).json({ message: "No files provided" });
+      }
+
+      values.push(userId);
+      const result = await pool.query(
+        `UPDATE pharmacy_details SET ${setClauses.join(", ")} WHERE user_id = $${values.length} RETURNING *`,
+        values,
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Pharmacy details not found" });
+      }
+
+      res.status(200).json({ message: "Files updated successfully", data: result.rows[0] });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Server error" });
@@ -1249,6 +1469,8 @@ router.get("/pharmacy-details", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+    if (error.name === "TokenExpiredError" || error.name === "JsonWebTokenError")
+      return res.status(401).json({ message: "Not logged in" });
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -1304,8 +1526,12 @@ router.get("/pharmacy-file/:type", async (req, res) => {
       return res.status(401).json({ message: "Authorization header missing" });
     }
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+    } catch (jwtErr) {
+      return res.status(401).json({ message: "Not logged in" });
+    }
     const userId = decoded.userId;
     const { type } = req.params;
 
@@ -1380,25 +1606,39 @@ router.post("/refresh-token", async (req, res) => {
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: decoded.role },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" },
+      { expiresIn: "3h" },
     );
 
-    // Rotate refresh token — delete old, insert new
+    // Rotate refresh token atomically — delete old and insert new in one transaction
     const newRefreshToken = jwt.sign(
-      { userId: decoded.userId },
+      { userId: decoded.userId, jti: crypto.randomUUID() },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: "1d" },
     );
 
-    await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
-      refreshToken,
-    ]);
-
-    await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
-      [decoded.userId, newRefreshToken],
-    );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const deleted = await client.query(
+        `DELETE FROM refresh_tokens WHERE token = $1 AND expires_at > NOW() RETURNING id`,
+        [refreshToken],
+      );
+      if (deleted.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ message: "Refresh token already used or expired" });
+      }
+      await client.query(
+        `INSERT INTO refresh_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
+        [decoded.userId, newRefreshToken],
+      );
+      await client.query("COMMIT");
+    } catch (txErr) {
+      await client.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     res.status(200).json({
       accessToken: newAccessToken,
@@ -1438,25 +1678,49 @@ router.post("/admin/refresh-token", async (req, res) => {
         .json({ message: "Refresh token revoked or expired" });
     }
 
+    // Re-check DB: refuse if admin was removed or deactivated since login
+    const adminCheck = await pool.query(
+      `SELECT role FROM users WHERE id = $1`,
+      [decoded.userId],
+    );
+    if (!adminCheck.rows.length || adminCheck.rows[0].role !== "admin") {
+      return res.status(403).json({ message: "Admin access revoked" });
+    }
+
     const newAccessToken = jwt.sign(
       { userId: decoded.userId, role: "admin" },
       process.env.ADMIN_JWT_SECRET,
       { expiresIn: "3h" },
     );
     const newRefreshToken = jwt.sign(
-      { userId: decoded.userId, role: "admin" },
+      { userId: decoded.userId, role: "admin", jti: crypto.randomUUID() },
       process.env.ADMIN_JWT_REFRESH_SECRET,
       { expiresIn: "12h" },
     );
 
-    await pool.query(`DELETE FROM refresh_tokens WHERE token = $1`, [
-      refreshToken,
-    ]);
-    await pool.query(
-      `INSERT INTO refresh_tokens (user_id, token, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
-      [decoded.userId, newRefreshToken],
-    );
+    const adminClient = await pool.connect();
+    try {
+      await adminClient.query("BEGIN");
+      const adminDeleted = await adminClient.query(
+        `DELETE FROM refresh_tokens WHERE token = $1 AND expires_at > NOW() RETURNING id`,
+        [refreshToken],
+      );
+      if (adminDeleted.rowCount === 0) {
+        await adminClient.query("ROLLBACK");
+        return res.status(401).json({ message: "Refresh token already used or expired" });
+      }
+      await adminClient.query(
+        `INSERT INTO refresh_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '12 hours')`,
+        [decoded.userId, newRefreshToken],
+      );
+      await adminClient.query("COMMIT");
+    } catch (txErr) {
+      await adminClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      adminClient.release();
+    }
 
     res
       .status(200)
@@ -1518,7 +1782,7 @@ router.post("/admin/verify-otp", async (req, res) => {
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.id, role: "admin" },
+      { userId: user.id, role: "admin", jti: crypto.randomUUID() },
       process.env.ADMIN_JWT_REFRESH_SECRET,
       { expiresIn: "12h" },
     );
@@ -1574,6 +1838,23 @@ router.get("/users", requireAnyAuth, async (req, res) => {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
+    // Paging is used only when the request asks for it (?page= or ?limit=).
+    // With neither, every user is returned as a plain list, as before: the
+    // admin dashboard shows all pharmacies on one screen and does not page
+    // yet, so a silent default limit would hide everyone after the first 50.
+    const wantsPaging =
+      req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
+
+    const whereClause = isAdmin ? "" : "WHERE u.id = $1";
+    const params = isAdmin ? [] : [ownId];
+    const pagingClause = wantsPaging
+      ? `LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+      : "";
+    const queryParams = wantsPaging ? [...params, limit, offset] : params;
+
     const result = await pool.query(
       `SELECT
          u.id,
@@ -1600,11 +1881,20 @@ router.get("/users", requireAnyAuth, async (req, res) => {
          ORDER BY created_at DESC
          LIMIT 1
        ) pd ON true
-       ${isAdmin ? "" : "WHERE u.id = $1"}
-       ORDER BY u.created_at DESC`,
-      isAdmin ? [] : [ownId],
+       ${whereClause}
+       ORDER BY u.created_at DESC
+       ${pagingClause}`,
+      queryParams,
     );
-    res.status(200).json(result.rows);
+
+    if (!wantsPaging) return res.status(200).json(result.rows);
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM users u ${whereClause}`,
+      params,
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+    res.status(200).json({ users: result.rows, total, page, limit });
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ message: "Server error" });
@@ -1646,7 +1936,7 @@ router.post("/impersonate", requireAdmin, async (req, res) => {
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, jti: crypto.randomUUID() },
       process.env.JWT_REFRESH_SECRET,
       { expiresIn: "1d" },
     );
@@ -1657,6 +1947,12 @@ router.post("/impersonate", requireAdmin, async (req, res) => {
        VALUES ($1, $2, NOW() + INTERVAL '1 day')`,
       [user.id, refreshToken],
     );
+
+    pool.query(
+      `INSERT INTO admin_impersonation_log (admin_id, pharmacy_user_id, created_at)
+       VALUES ($1, $2, NOW())`,
+      [req.admin.userId, user.id],
+    ).catch((err) => console.error("Impersonation log failed:", err?.message));
 
     res.status(200).json({
       accessToken,
@@ -1790,7 +2086,7 @@ router.post("/admin/resend-otp", async (req, res) => {
     if (!issued.ok) return sendResendRefusal(res, issued);
     const otp = issued.otp;
 
-    await resend.emails.send({
+    const { error: adminResendErr } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: email,
       subject: "Admin Login OTP (Resent)",
@@ -1817,12 +2113,17 @@ router.post("/admin/resend-otp", async (req, res) => {
 
     <div style="background:#f1f5f9; padding:16px; font-size:12px; text-align:center; color:#64748b;">
       © 2026 AuditProRx. All rights reserved.<br/>
-      <a href="#" style="color:#64748b; text-decoration:underline;">Unsubscribe</a>
+
     </div>
 
   </div>
 </div>`,
     });
+
+    if (adminResendErr) {
+      console.error("Admin resend OTP email failed:", adminResendErr);
+      return res.status(502).json({ message: "Failed to send OTP email. Please try again." });
+    }
 
     res.status(200).json({
       message: "Admin OTP resent successfully",

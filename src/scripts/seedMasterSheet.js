@@ -16,11 +16,13 @@ const seedMasterSheet = async () => {
   // Debug: print exact column names from CSV
   console.log("CSV columns:", Object.keys(records[0]));
 
-  await pool.query(`DELETE FROM master_sheet`);
-
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    // Inside the transaction: if anything below fails, the ROLLBACK brings
+    // the old master sheet back. (It used to be emptied before the
+    // transaction started, so a failure left it empty.)
+    await client.query(`DELETE FROM master_sheet`);
     let count = 0;
     for (const row of records) {
       // Find pbm and payer columns dynamically - dont rely on exact name

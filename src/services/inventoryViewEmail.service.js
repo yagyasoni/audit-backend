@@ -226,14 +226,21 @@ export const sendConnectRequestEmail = async ({
   // "Reply-To" routes replies straight to the buyer's actual email.
   // This is the standard pattern (Calendly, Slack, LinkedIn all do this).
 
-  const fromName = buyerName ? buyerName : "Pharmacy Network";
+  // The buyer's name becomes the display name of the sender. Characters that
+  // have a meaning in an email address line are removed from it.
+  const cleanName = String(buyerName || "")
+    .replace(/[<>"\\,;:()\[\]\r\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  const fromName = cleanName || "Pharmacy Network";
   const fromDomain = process.env.EMAIL_FROM || "noreply@auditprorx.com";
   const fromEmailOnly = fromDomain.match(/<(.+)>/)?.[1] || fromDomain;
   const fromAddress = `${fromName} <${fromEmailOnly}>`;
 
   const replyTo = buyerEmail
-    ? buyerName
-      ? `${buyerName} <${buyerEmail}>`
+    ? cleanName
+      ? `${cleanName} <${buyerEmail}>`
       : buyerEmail
     : undefined;
 

@@ -13,7 +13,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // PLAN MAP — 3 fixed tiers, no add-ons
 // base        → $99  /mo → inventory_reports_access
 // professional→ $249 /mo → inventory_reports_access + inventory_view_access
-// full_access → $499 /mo → all access
+// full_access → $399 /mo → all access
 // =========================================
 
 const PRICE_MAP = {
@@ -40,6 +40,13 @@ router.post(
       console.error("❌ Webhook signature error:", err.message);
       return res.sendStatus(400);
     }
+
+    // Each Stripe event is handled once. The event is "claimed" first; a
+    // second delivery of the same event is answered OK without doing the
+    // work again. If handling FAILS, the claim is given back (see the catch
+    // below) so that Stripe's retry is processed and not skipped.
+    const claimed = await claimEvent(event.id);
+    if (claimed === false) return res.sendStatus(200);
 
     try {
       switch (event.type) {
@@ -73,10 +80,12 @@ router.post(
             }
           } else if (event.type === "invoice.paid") {
             const invoice = event.data.object;
-            if (!invoice.subscription) break;
-            subscription = await stripe.subscriptions.retrieve(
-              invoice.subscription,
-            );
+            // M30: subscription id may be on .subscription or .parent.subscription_details.subscription
+            const paidSubId =
+              invoice.subscription ||
+              invoice.parent?.subscription_details?.subscription;
+            if (!paidSubId) break;
+            subscription = await stripe.subscriptions.retrieve(paidSubId);
           } else {
             subscription = await stripe.subscriptions.retrieve(
               event.data.object.id,
@@ -150,10 +159,14 @@ router.post(
 
         case "invoice.payment_failed": {
           const invoice = event.data.object;
-          if (!invoice.subscription) break;
+          // M30: subscription id may be on .subscription or .parent.subscription_details.subscription
+          const failedSubId =
+            invoice.subscription ||
+            invoice.parent?.subscription_details?.subscription;
+          if (!failedSubId) break;
 
           const subscription = await stripe.subscriptions.retrieve(
-            invoice.subscription,
+            failedSubId,
           );
 
           if (hasEnded(subscription.status)) {
@@ -165,11 +178,16 @@ router.post(
           // succeeded): nothing to take away.
           if (hasPaidAccess(subscription.status)) break;
 
+          // (access an admin granted by hand is not paid through Stripe and
+          // stays on: see ADMIN-GRANTED ACCESS below)
           await pool.query(
             `UPDATE subscriptions
              SET status=$2,
-                 inventory_reports_access=false, inventory_view_access=false,
-                 drug_lookup_access=false, leads_access=false, full_access=false,
+                 inventory_reports_access = (admin_override AND inventory_reports_access),
+                 inventory_view_access    = (admin_override AND inventory_view_access),
+                 drug_lookup_access       = (admin_override AND drug_lookup_access),
+                 leads_access             = (admin_override AND leads_access),
+                 full_access              = (admin_override AND full_access),
                  updated_at=NOW()
              WHERE stripe_subscription_id = $1`,
             [subscription.id, subscription.status],
@@ -201,10 +219,65 @@ router.post(
       return res.sendStatus(200);
     } catch (error) {
       console.error("❌ Webhook error:", error);
+      // Not handled: give the claim back so the retry is processed.
+      if (claimed) await releaseEvent(event.id);
       return res.sendStatus(500);
     }
   },
 );
+
+// =========================================
+// HANDLE EACH EVENT ONCE
+// processed_webhook_events holds the ids of events already handled
+// (migration 20261114_processed_webhook_events.sql).
+//   claimEvent   → true  : first time, go on and handle it
+//                  false : already handled, skip
+//                  null  : the table does not exist yet (migration not run);
+//                          the event is handled without this protection
+//   releaseEvent → forget a claim after a failure, so the retry runs
+// =========================================
+
+let warnedMissingEventsTable = false;
+
+async function claimEvent(eventId) {
+  if (!eventId) return null;
+  try {
+    const result = await pool.query(
+      `INSERT INTO processed_webhook_events (stripe_event_id)
+       VALUES ($1)
+       ON CONFLICT DO NOTHING
+       RETURNING stripe_event_id`,
+      [eventId],
+    );
+    return result.rowCount === 1;
+  } catch (error) {
+    // 42P01 = table does not exist
+    if (error?.code === "42P01") {
+      if (!warnedMissingEventsTable) {
+        warnedMissingEventsTable = true;
+        console.warn(
+          "[webhook] Table processed_webhook_events is missing. Events are " +
+            "still handled, but repeats are not filtered. Run the migration.",
+        );
+      }
+      return null;
+    }
+    // Any other database failure: answer Stripe with an error so it retries.
+    console.error("❌ Webhook claim error:", error);
+    throw error;
+  }
+}
+
+async function releaseEvent(eventId) {
+  try {
+    await pool.query(
+      `DELETE FROM processed_webhook_events WHERE stripe_event_id = $1`,
+      [eventId],
+    );
+  } catch (error) {
+    console.error("❌ Webhook release error:", error);
+  }
+}
 
 // =========================================
 // SUBSCRIPTION STATES (Stripe's own words)
@@ -220,6 +293,24 @@ const hasPaidAccess = (status) => PAID_STATES.includes(status);
 const hasEnded = (status) => ENDED_STATES.includes(status);
 
 // =========================================
+// ADMIN-GRANTED ACCESS (admin_override)
+// The admin dashboard can switch access on for a pharmacy by hand. Such a
+// row has admin_override = true. Rules used in this file:
+//   - A Stripe event still records the subscription (ids, status, plan), so
+//     a pharmacy with a manual grant can also buy, change and cancel a plan.
+//   - A Stripe event never switches OFF access the admin switched on: each
+//     flag becomes "plan gives it OR admin had it on".
+//   - Once the paid plan covers everything that is on, the row is an
+//     ordinary paid subscription again (admin_override goes back to false),
+//     so later downgrades and cancels behave normally.
+// SQL: true when the row has a manual grant with at least one flag on.
+// =========================================
+
+const ADMIN_GRANT_HOLDS = `(admin_override AND (
+  inventory_reports_access OR inventory_view_access OR drug_lookup_access
+  OR leads_access OR full_access))`;
+
+// =========================================
 // REVOKE AN ENDED SUBSCRIPTION
 // Removes all access AND forgets the subscription id, so the customer can
 // subscribe again (checkout refuses while a subscription id is saved).
@@ -231,12 +322,24 @@ const hasEnded = (status) => ENDED_STATES.includes(status);
 // =========================================
 
 async function revokeSubscription(stripeSubscriptionId) {
+  // Access that an admin granted by hand (admin_override, see ADMIN-GRANTED
+  // ACCESS below) is not paid for through Stripe, so the end of the Stripe
+  // subscription does not take it away.
   await pool.query(
     `UPDATE subscriptions
-     SET status='canceled', subscription_type='none',
+     SET status = CASE WHEN ${ADMIN_GRANT_HOLDS} THEN 'active' ELSE 'canceled' END,
+         subscription_type = CASE
+           WHEN admin_override AND full_access              THEN 'full_access'
+           WHEN admin_override AND inventory_view_access    THEN 'professional'
+           WHEN admin_override AND inventory_reports_access THEN 'base'
+           ELSE 'none'
+         END,
          stripe_subscription_id=NULL,
-         inventory_reports_access=false, inventory_view_access=false,
-         drug_lookup_access=false, leads_access=false, full_access=false,
+         inventory_reports_access = (admin_override AND inventory_reports_access),
+         inventory_view_access    = (admin_override AND inventory_view_access),
+         drug_lookup_access       = (admin_override AND drug_lookup_access),
+         leads_access             = (admin_override AND leads_access),
+         full_access              = (admin_override AND full_access),
          active_price_ids=ARRAY[]::TEXT[], cancel_at_period_end=false,
          trial_end=NULL, grace_period_end=NULL, pending_plan=NULL,
          updated_at=NOW()
@@ -259,6 +362,21 @@ async function finalizeTrialRedemption(subscription) {
     const trialCode = subscription.metadata?.trialCode;
     if (!trialCode) return; // no code on this subscription
 
+    // One free trial per pharmacy: a pharmacy that already has a DIFFERENT
+    // trial code on record does not get a second code counted. (There is one
+    // subscriptions row per user, and trial_code is kept after a cancel.)
+    const alreadyUsed = await pool.query(
+      `SELECT 1 FROM subscriptions
+        WHERE stripe_subscription_id = $1
+          AND trial_code IS NOT NULL
+          AND trial_code <> $2`,
+      [subscription.id, trialCode],
+    );
+    if (alreadyUsed.rows.length) {
+      console.log(`⚠️  Trial code ${trialCode} skipped — user already redeemed a trial`);
+      return;
+    }
+
     const updated = await pool.query(
       `UPDATE subscriptions
           SET trial_code = $1
@@ -268,15 +386,23 @@ async function finalizeTrialRedemption(subscription) {
       [trialCode, subscription.id],
     );
 
-    // Only the FIRST delivery actually changes the row → count once
+    // Only the FIRST delivery actually changes the row → attempt atomic increment.
+    // L25: use a conditional UPDATE so two concurrent completions can never
+    // both push times_redeemed past max_redemptions.
     if (updated.rows.length) {
-      await pool.query(
-        `UPDATE trial_codes SET times_redeemed = times_redeemed + 1 WHERE code = $1`,
+      const claimed = await pool.query(
+        `UPDATE trial_codes
+            SET times_redeemed = times_redeemed + 1
+          WHERE code = $1
+            AND (max_redemptions IS NULL OR times_redeemed < max_redemptions)
+          RETURNING id`,
         [trialCode],
       );
-      console.log(
-        `🎟️  Trial code ${trialCode} redeemed (sub ${subscription.id})`,
-      );
+      if (claimed.rows.length) {
+        console.log(`🎟️  Trial code ${trialCode} redeemed (sub ${subscription.id})`);
+      } else {
+        console.warn(`⚠️  Trial code ${trialCode} limit already reached at webhook — trial granted by Stripe but not counted`);
+      }
     }
   } catch (error) {
     console.error("❌ finalizeTrialRedemption error:", error);
@@ -372,11 +498,28 @@ async function syncSubscription(subscription) {
          current_period_end       = EXCLUDED.current_period_end,
          cancel_at_period_end     = EXCLUDED.cancel_at_period_end,
          subscription_type        = EXCLUDED.subscription_type,
-         inventory_reports_access = EXCLUDED.inventory_reports_access,
-         inventory_view_access    = EXCLUDED.inventory_view_access,
-         drug_lookup_access       = EXCLUDED.drug_lookup_access,
-         leads_access             = EXCLUDED.leads_access,
-         full_access              = EXCLUDED.full_access,
+         -- Access the admin switched on by hand is never switched off by a
+         -- Stripe event (see ADMIN-GRANTED ACCESS above). "subscriptions.x"
+         -- is the value before this update.
+         inventory_reports_access = EXCLUDED.inventory_reports_access
+           OR (subscriptions.admin_override AND subscriptions.inventory_reports_access),
+         inventory_view_access    = EXCLUDED.inventory_view_access
+           OR (subscriptions.admin_override AND subscriptions.inventory_view_access),
+         drug_lookup_access       = EXCLUDED.drug_lookup_access
+           OR (subscriptions.admin_override AND subscriptions.drug_lookup_access),
+         leads_access             = EXCLUDED.leads_access
+           OR (subscriptions.admin_override AND subscriptions.leads_access),
+         full_access              = EXCLUDED.full_access
+           OR (subscriptions.admin_override AND subscriptions.full_access),
+         -- The manual grant stays marked only while it gives something the
+         -- paid plan does not.
+         admin_override = subscriptions.admin_override AND (
+              (subscriptions.inventory_reports_access AND NOT EXCLUDED.inventory_reports_access)
+           OR (subscriptions.inventory_view_access    AND NOT EXCLUDED.inventory_view_access)
+           OR (subscriptions.drug_lookup_access       AND NOT EXCLUDED.drug_lookup_access)
+           OR (subscriptions.leads_access             AND NOT EXCLUDED.leads_access)
+           OR (subscriptions.full_access              AND NOT EXCLUDED.full_access)
+         ),
          active_price_ids         = EXCLUDED.active_price_ids,
          trial_end                = EXCLUDED.trial_end,
          pending_plan =

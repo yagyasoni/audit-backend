@@ -2,6 +2,7 @@ import express from "express";
 import { uploadInventory, uploadWholesalers } from "../utils/multer.js";
 import { requireFeature } from "../middleware/auth.js";
 import { pool } from "../config/db.js";
+import { perUser } from "../middleware/rateLimit.js";
 import {
   createAudit,
   updateAuditDates,
@@ -78,9 +79,15 @@ const ownDrugLookup = [drugLookup, ownAudit];
 // CREATE & UPDATE
 // ============================
 
-router.get("/drug-search", drugLookup, searchDrugNames);
-router.get("/drug-lookup-global", drugLookup, getDrugLookupGlobal); // ← ADD THIS LINE
-router.get("/drug-lookup-landing", drugLookup, getDrugLookupLanding);
+// Drug lookup limits, counted per login AFTER the login check (not per
+// address: pharmacies behind one office address must not share a limit).
+// The search box asks while the user types, so it gets a higher limit.
+const searchLimit = perUser({ minutes: 1, limit: 120 });
+const lookupLimit = perUser({ minutes: 1, limit: 60 });
+
+router.get("/drug-search", drugLookup, searchLimit, searchDrugNames);
+router.get("/drug-lookup-global", drugLookup, lookupLimit, getDrugLookupGlobal);
+router.get("/drug-lookup-landing", drugLookup, lookupLimit, getDrugLookupLanding);
 // In audit.routes.js, add this line with the other audit routes:
 router.get("/ndc-suggestions", inventoryView, searchNdcSuggestions);
 
@@ -109,7 +116,7 @@ router.post(
   uploadInventoryFile,
 );
 
-router.post("/:id/inventory/rows", ownReports, createInventoryRows);
+// (the raw claim-rows routes were removed: the website never called them)
 
 // ============================
 // WHOLESALERS
@@ -123,7 +130,6 @@ router.post("/:id/wholesalers", ownReports, uploadWholesalers.any(), uploadWhole
 
 router.get("/", reports, getAudits);
 router.get("/:id", ownReports, getAuditById);
-router.get("/:id/inventory/rows", ownReports, getInventoryRows);
 router.get("/:id/report", ownReports, getFullReport);
 router.get("/:id/aberrant-summary", ownReports, getAberrantRiskSummary);
 
@@ -142,7 +148,7 @@ router.get("/:id/wholesaler-file/content", ownReports, serveWholesalerFile);
 router.delete("/:id", ownReports, deleteAudit);
 router.put("/:id/dates", ownReports, updateAuditDates);
 
-router.get("/:id/drug-detail/:ndc", ownReports, getDrugWholesalerDetail);
+// (the drug-detail route was removed: the website never called it)
 router.delete("/:id/wholesalers", ownReports, deleteWholesalerFile);
 router.get("/:id/inventory-detail/:ndc", ownReports, getInventoryDetail);
 router.get("/:id/wholesaler-detail/:ndc", ownReports, getWholesalerDetail);

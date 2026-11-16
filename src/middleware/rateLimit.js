@@ -118,6 +118,40 @@ const perEmail = ({ minutes, limit }) =>
     legacyHeaders: false,
   });
 
+// ── Per logged-in user ───────────────────────────────────────
+// For feature routes (drug lookup, temperature logs). Used AFTER the login
+// check, so every pharmacy has its own count whatever address it comes from.
+// Counting these by address would make several pharmacies behind one office
+// address, or all users behind a proxy that hides addresses, share one limit.
+function tooManyRequests(req, res, _next, options) {
+  const resetTime = req.rateLimit?.resetTime;
+  const waitMs = resetTime
+    ? resetTime.getTime() - Date.now()
+    : options.windowMs;
+  const seconds = Math.max(1, Math.ceil(waitMs / 1000));
+
+  res.set("Retry-After", String(seconds));
+  return res.status(429).json({
+    code: "RATE_LIMITED",
+    message: "Too many requests. Please wait a moment and try again.",
+    error: "Too many requests. Please wait a moment and try again.",
+    retryAfter: seconds,
+  });
+}
+
+const userKey = (req) => req.user?.userId || req.admin?.userId || "";
+
+export const perUser = ({ minutes, limit }) =>
+  rateLimit({
+    windowMs: minutes * MINUTE,
+    limit,
+    keyGenerator: (req) => `user:${userKey(req)}`,
+    skip: (req) => !userKey(req),
+    handler: tooManyRequests,
+    standardHeaders: false,
+    legacyHeaders: false,
+  });
+
 // ── The limits ───────────────────────────────────────────────
 // Every call counts, whether it succeeds or not.
 

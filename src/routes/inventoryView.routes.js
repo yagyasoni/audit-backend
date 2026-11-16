@@ -111,6 +111,7 @@ import {
   deleteListingReport,
 } from "../controllers/inventoryView.controller.js";
 import { requireFeature, requireAdmin } from "../middleware/auth.js";
+import { largeJson } from "../middleware/body.js";
 
 const router = express.Router();
 
@@ -159,8 +160,10 @@ router.delete("/groups/:id/members/:memberPharmacyId", removeGroupMember);
 
 // ── Group reports (per-pharmacy report copied into a group) ─────────────────
 router.get("/groups/:id/reports", getGroupReports);
-router.post("/groups/:id/reports", addGroupReport);
-router.post("/groups/:id/reports/:reportId/contribute", contributeGroupReport);
+// A shared report sends one row per drug, so the body can be large. It is
+// read after the login check above (see middleware/body.js).
+router.post("/groups/:id/reports", largeJson, addGroupReport);
+router.post("/groups/:id/reports/:reportId/contribute", largeJson, contributeGroupReport);
 router.get("/groups/:id/reports/:reportId", getGroupReportDetail);
 router.delete("/groups/:id/reports/:reportId", deleteGroupReport);
 

@@ -576,6 +576,34 @@ export const updateAuditDates = async (req, res) => {
       });
     }
 
+    // Every date that is sent must be a real date, and a range must not end
+    // before it starts.
+    const sent = {
+      "Inventory start date": inventory_start_date,
+      "Inventory end date": inventory_end_date,
+      "Wholesaler start date": wholesaler_start_date,
+      "Wholesaler end date": wholesaler_end_date,
+    };
+    for (const [label, value] of Object.entries(sent)) {
+      if (value && Number.isNaN(Date.parse(value))) {
+        return res.status(400).json({ error: `${label} is not a valid date` });
+      }
+    }
+    if (Date.parse(inventory_start_date) > Date.parse(inventory_end_date)) {
+      return res.status(400).json({
+        error: "Inventory start date must be on or before the end date",
+      });
+    }
+    if (
+      wholesaler_start_date &&
+      wholesaler_end_date &&
+      Date.parse(wholesaler_start_date) > Date.parse(wholesaler_end_date)
+    ) {
+      return res.status(400).json({
+        error: "Wholesaler start date must be on or before the end date",
+      });
+    }
+
     const updatedAudit = await auditService.updateAuditDates(id, {
       inventory_start_date,
       inventory_end_date,
@@ -594,6 +622,21 @@ export const updateAuditDates = async (req, res) => {
     console.error("Update Dates Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+};
+
+// Reply for a failed upload. A file the user has to correct (UploadRefused)
+// gets its own clear message. Anything else is a server problem: it is
+// logged here, and the reply carries no error trace or server paths.
+const sendUploadError = (res, err, label) => {
+  if (err?.name === "UploadRefused") {
+    console.warn(label, err.message);
+    return res.status(400).json({ error: err.message });
+  }
+  console.error(label, err);
+  return res.status(500).json({
+    error:
+      "The upload could not be saved. Nothing was changed. Please try again.",
+  });
 };
 
 export const uploadInventoryFile = async (req, res) => {
@@ -629,14 +672,7 @@ export const uploadInventoryFile = async (req, res) => {
       excluded: { excludeTransferred, excludeUnbilled },
     });
   } catch (err) {
-    console.error("Upload error:", err);
-    console.error("UPLOAD INVENTORY ERROR:", err);
-
-    return res.status(500).json({
-      error: err.message,
-      stack: err.stack,
-      details: err?.cause || null,
-    });
+    return sendUploadError(res, err, "UPLOAD INVENTORY ERROR:");
   }
 };
 
@@ -699,8 +735,7 @@ export const uploadWholesalerFiles = async (req, res) => {
       data: saved,
     });
   } catch (err) {
-    console.error("Wholesaler Upload Error:", err);
-    res.status(500).json({ error: err.message });
+    return sendUploadError(res, err, "Wholesaler Upload Error:");
   }
 };
 
@@ -1093,6 +1128,8 @@ export const deleteWholesalerFile = async (req, res) => {
     }
 
     await client.query("COMMIT");
+    // The report may no longer be complete without this wholesaler's file.
+    await auditService.refreshAuditStatus(id);
     res.json({ success: true, deleted: existingFiles.rows.length });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -1599,6 +1636,12 @@ export const getAberrantRiskSummary = async (req, res) => {
   try {
     const { id } = req.params;
     const { month } = req.query; // format: "YYYY-MM"
+
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ""))) {
+      return res
+        .status(400)
+        .json({ error: "month is required in the form YYYY-MM (for example 2025-03)" });
+    }
 
     const caremarkBinsCte = `
       caremark_bins AS (

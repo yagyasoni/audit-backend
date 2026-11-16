@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import { pool } from "../config/db.js";
 import {
   buildConnectRequestEmail,
@@ -65,12 +66,10 @@ const generateInviteCode = (groupName) => {
       .replace(/[^A-Za-z0-9]/g, "")
       .toUpperCase()
       .slice(0, 8) || "GROUP";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const segment = () => {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let s = "";
-    for (let i = 0; i < 4; i++)
-      s += chars[Math.floor(Math.random() * chars.length)];
-    return s;
+    const bytes = randomBytes(4);
+    return Array.from(bytes).map((b) => chars[b % chars.length]).join("");
   };
   return `${prefix}-${segment()}-${segment()}`;
 };
@@ -209,7 +208,8 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
-//     return res.status(500).json({ error: err.message });
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
 //   }
 // };
 
@@ -247,7 +247,8 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
-//     return res.status(500).json({ error: err.message });
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
 //   }
 // };
 
@@ -282,7 +283,8 @@ const mapListingRow = (r) => ({
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("getListings error:", err);
-//     return res.status(500).json({ error: err.message });
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
 //   }
 // };
 
@@ -290,7 +292,17 @@ export const getListings = async (req, res) => {
   try {
     const userId = requireUser(req);
     const myPharmacyId = await getUserPharmacyId(userId);
-    const { group_id } = req.query; // NEW: optional filter
+    const { group_id } = req.query;
+
+    // Paging is used only when the request asks for it (?limit= or ?page=).
+    // With neither, the whole list is returned as before: the listings
+    // screen does not page yet, and "My Listings" below is cut from this
+    // same list, so a silent default limit would hide listings from both.
+    const wantsPaging =
+      req.query.limit !== undefined || req.query.page !== undefined;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = (page - 1) * limit;
 
     let memberGroupIds = [];
     if (myPharmacyId) {
@@ -374,6 +386,7 @@ export const getListings = async (req, res) => {
         AND (l.auto_expires_at IS NULL OR l.auto_expires_at > NOW())
         ${whereClause}
       ORDER BY l.created_at DESC
+      ${wantsPaging ? `LIMIT ${limit} OFFSET ${offset}` : ""}
       `,
       queryParams,
     );
@@ -390,17 +403,30 @@ export const getListings = async (req, res) => {
     const listings = all;
     const my_listings = all.filter((l) => isMine(l));
 
-    return res.json({ listings, my_listings });
+    return res.json({
+      listings,
+      my_listings,
+      ...(wantsPaging ? { page, limit } : {}),
+    });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getListings error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
 export const createListing = async (req, res) => {
+  const client = await pool.connect();
   try {
     const userId = requireUser(req);
+    // M26: enforce agreement acceptance server-side
+    const agreeCheck = await pool.query(
+      `SELECT 1 FROM inventory_agreement_acceptances WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (agreeCheck.rows.length === 0)
+      return res.status(403).json({ error: "You must accept the network agreement before listing" });
     const {
       ndc,
       drug_name,
@@ -417,16 +443,30 @@ export const createListing = async (req, res) => {
       group_ids = [],
     } = req.body;
 
-    if (
-      !ndc ||
-      !drug_name ||
-      !lot_number ||
-      !expiry ||
-      !quantity ||
-      !reason_code
-    ) {
+    if (!ndc || !drug_name || !lot_number || !expiry || !reason_code) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+
+    const parsedQty = parseInt(quantity, 10);
+    if (isNaN(parsedQty) || parsedQty < 1) {
+      return res.status(400).json({ error: "Quantity must be a positive integer" });
+    }
+
+    if (acquisition_cost !== undefined && acquisition_cost !== null && acquisition_cost !== "") {
+      const parsedCost = parseFloat(acquisition_cost);
+      if (isNaN(parsedCost) || parsedCost < 0) {
+        return res.status(400).json({ error: "Acquisition cost must be a non-negative number" });
+      }
+    }
+
+    if (isNaN(Date.parse(expiry))) {
+      return res.status(400).json({ error: "Expiry must be a valid date" });
+    }
+
+    // M26: truncate manufacturer to DB column length to prevent insert errors
+    const safeManufacturer = manufacturer
+      ? String(manufacturer).slice(0, 255)
+      : null;
 
     const pharmacyId = await getUserPharmacyId(userId);
     if (!pharmacyId) {
@@ -442,7 +482,9 @@ export const createListing = async (req, res) => {
         ? "groups_only"
         : "public";
 
-    const result = await pool.query(
+    await client.query("BEGIN");
+
+    const result = await client.query(
       `INSERT INTO inventory_listings
         (user_id, pharmacy_id, ndc, drug_name, strength, dosage_form,
          manufacturer, package_size, quantity, lot_number, expiry,
@@ -456,12 +498,12 @@ export const createListing = async (req, res) => {
         drug_name,
         strength || null,
         dosage_form || null,
-        manufacturer || null,
+        safeManufacturer,
         package_size || null,
-        parseInt(quantity, 10),
+        parsedQty,
         lot_number,
         expiry,
-        acquisition_cost ? parseFloat(acquisition_cost) : null,
+        acquisition_cost !== undefined && acquisition_cost !== null && acquisition_cost !== "" ? parseFloat(acquisition_cost) : null,
         reason_code,
         finalVisibility,
       ],
@@ -469,7 +511,7 @@ export const createListing = async (req, res) => {
     const listing = result.rows[0];
 
     if (finalVisibility === "groups_only" && group_ids.length > 0) {
-      const validGroups = await pool.query(
+      const validGroups = await client.query(
         `SELECT m.group_id FROM inventory_group_members m
          JOIN inventory_groups g ON g.id = m.group_id
          WHERE m.pharmacy_id = $1 AND m.group_id = ANY($2::uuid[]) AND g.is_active = true`,
@@ -477,7 +519,7 @@ export const createListing = async (req, res) => {
       );
 
       for (const g of validGroups.rows) {
-        await pool.query(
+        await client.query(
           `INSERT INTO inventory_listing_groups (listing_id, group_id)
            VALUES ($1, $2) ON CONFLICT DO NOTHING`,
           [listing.id, g.group_id],
@@ -485,11 +527,16 @@ export const createListing = async (req, res) => {
       }
     }
 
+    await client.query("COMMIT");
     return res.status(201).json(listing);
   } catch (err) {
+    await client.query("ROLLBACK");
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("createListing error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 };
 
@@ -531,12 +578,17 @@ export const updateListing = async (req, res) => {
       params.push(q);
     }
     if (expiry !== undefined) {
+      if (expiry && isNaN(Date.parse(expiry)))
+        return res.status(400).json({ error: "Expiry must be a valid date" });
       sets.push(`expiry = $${p++}`);
       params.push(expiry || null);
     }
     if (acquisition_cost !== undefined) {
+      const parsedUpdateCost = acquisition_cost !== null && acquisition_cost !== "" ? parseFloat(acquisition_cost) : null;
+      if (parsedUpdateCost !== null && isNaN(parsedUpdateCost))
+        return res.status(400).json({ error: "Acquisition cost must be a non-negative number" });
       sets.push(`acquisition_cost = $${p++}`);
-      params.push(acquisition_cost ? parseFloat(acquisition_cost) : null);
+      params.push(parsedUpdateCost);
     }
     if (reason_code !== undefined) {
       sets.push(`reason_code = $${p++}`);
@@ -591,7 +643,8 @@ export const updateListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("updateListing error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -618,7 +671,8 @@ export const updateListing = async (req, res) => {
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("deleteListing error:", err);
-//     return res.status(500).json({ error: err.message });
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
 //   }
 // };
 
@@ -653,7 +707,8 @@ export const deleteListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteListing error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -682,7 +737,8 @@ export const deleteListing = async (req, res) => {
 //   } catch (err) {
 //     if (err.status) return res.status(err.status).json({ error: err.message });
 //     console.error("deleteListing error:", err);
-//     return res.status(500).json({ error: err.message });
+//     console.error(err);
+// return res.status(500).json({ error: "Internal server error" });
 //   }
 // };
 
@@ -732,7 +788,8 @@ export const reportListing = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("reportListing error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -798,7 +855,8 @@ export const getListingReports = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("getListingReports error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -873,7 +931,8 @@ export const getListingReportById = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("getListingReportById error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -904,7 +963,8 @@ export const deleteListingReport = async (req, res) => {
     if (err.status) return res.status(err.status).json({ error: err.message });
 
     console.error("deleteListingReport error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -930,7 +990,8 @@ export const getAgreementStatus = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getAgreementStatus error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -956,7 +1017,8 @@ export const acceptAgreement = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("acceptAgreement error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -967,6 +1029,18 @@ export const acceptAgreement = async (req, res) => {
 export const sendConnectRequest = async (req, res) => {
   try {
     const userId = requireUser(req);
+
+    // The network agreement must be accepted before contacting a seller.
+    // The website already asks for it; this is the same rule on the server.
+    const agreeCheck = await pool.query(
+      `SELECT 1 FROM inventory_agreement_acceptances WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (agreeCheck.rows.length === 0)
+      return res.status(403).json({
+        error:
+          "You must accept the network agreement before contacting sellers",
+      });
 
     // The browser says only WHICH listing, HOW MANY and an optional note.
     // Who receives the email and what it says are decided here, from the
@@ -1105,7 +1179,8 @@ export const sendConnectRequest = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("sendConnectRequest error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1148,7 +1223,8 @@ export const getMyGroups = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getMyGroups error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1197,7 +1273,8 @@ export const discoverGroups = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("discoverGroups error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1282,11 +1359,13 @@ export const requestJoinGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("requestJoinGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
 export const createGroup = async (req, res) => {
+  const client = await pool.connect();
   try {
     const userId = requireUser(req);
     const pharmacyId = await getUserPharmacyId(userId);
@@ -1309,7 +1388,9 @@ export const createGroup = async (req, res) => {
     if (Number(countRes.rows[0].count) >= 5)
       return res.status(400).json({ error: "You can be in at most 5 groups." });
 
-    const groupRes = await pool.query(
+    await client.query("BEGIN");
+
+    const groupRes = await client.query(
       `INSERT INTO inventory_groups
         (name, description, created_by_user_id, created_by_pharmacy_id, is_discoverable)
        VALUES ($1, $2, $3, $4, $5)
@@ -1318,17 +1399,22 @@ export const createGroup = async (req, res) => {
     );
     const group = groupRes.rows[0];
 
-    await pool.query(
+    await client.query(
       `INSERT INTO inventory_group_members (group_id, pharmacy_id, user_id, role)
        VALUES ($1, $2, $3, 'admin')`,
       [group.id, pharmacyId, userId],
     );
 
+    await client.query("COMMIT");
     return res.status(201).json(group);
   } catch (err) {
+    await client.query("ROLLBACK");
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("createGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 };
 
@@ -1383,7 +1469,8 @@ export const updateGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("updateGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1469,14 +1556,20 @@ export const getGroupDetail = async (req, res) => {
     return res.json({
       group,
       members: membersRes.rows,
-      invite_codes: codesRes.rows,
-      pending_invitations: invitesRes.rows,
-      pending_join_requests: joinRequestsRes.rows,
+      // M22: admin-sensitive fields only returned to the group admin
+      ...(group.is_admin
+        ? {
+            invite_codes: codesRes.rows,
+            pending_invitations: invitesRes.rows,
+            pending_join_requests: joinRequestsRes.rows,
+          }
+        : {}),
     });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupDetail error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1574,21 +1667,38 @@ export const inviteToGroup = async (req, res) => {
         error: "An invitation is already pending for this pharmacy/email",
       });
 
-    const inv = await pool.query(
-      `INSERT INTO inventory_group_invitations
-        (group_id, invited_email, invited_user_id, invited_pharmacy_id,
-         invited_by_user_id, message, direction)
-       VALUES ($1, $2, $3, $4, $5, $6, 'admin_to_user')
-       RETURNING *`,
-      [
-        groupId,
-        invitedEmail || null,
-        invitedUserId,
-        invitedPharmacyId,
-        userId,
-        message || null,
-      ],
-    );
+    const invClient = await pool.connect();
+    let invRow;
+    try {
+      await invClient.query("BEGIN");
+      const capCheck = await invClient.query(
+        `SELECT max_members,
+           (SELECT COUNT(*) FROM inventory_group_members WHERE group_id = $1) AS member_count
+         FROM inventory_groups WHERE id = $1 AND is_active = true FOR UPDATE`,
+        [groupId],
+      );
+      if (!capCheck.rows.length) { await invClient.query("ROLLBACK"); return res.status(404).json({ error: "Group not found" }); }
+      if (Number(capCheck.rows[0].member_count) >= capCheck.rows[0].max_members) {
+        await invClient.query("ROLLBACK");
+        return res.status(400).json({ error: "Group is at maximum capacity" });
+      }
+      const invRes = await invClient.query(
+        `INSERT INTO inventory_group_invitations
+          (group_id, invited_email, invited_user_id, invited_pharmacy_id,
+           invited_by_user_id, message, direction)
+         VALUES ($1, $2, $3, $4, $5, $6, 'admin_to_user')
+         RETURNING *`,
+        [groupId, invitedEmail || null, invitedUserId, invitedPharmacyId, userId, message || null],
+      );
+      await invClient.query("COMMIT");
+      invRow = invRes.rows[0];
+    } catch (txErr) {
+      await invClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      invClient.release();
+    }
+    const inv = { rows: [invRow] };
 
     if (invitedEmail) {
       try {
@@ -1619,7 +1729,8 @@ export const inviteToGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("inviteToGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1664,7 +1775,8 @@ export const generateGroupInviteCode = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("generateGroupInviteCode error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1743,7 +1855,8 @@ export const joinGroupByCode = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("joinGroupByCode error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1770,12 +1883,20 @@ export const leaveGroup = async (req, res) => {
        WHERE group_id = $1 AND pharmacy_id = $2`,
       [groupId, pharmacyId],
     );
+    // M24: also remove shared listings for this pharmacy in this group
+    await pool.query(
+      `DELETE FROM inventory_listing_groups
+       WHERE group_id = $1
+         AND listing_id IN (SELECT id FROM inventory_listings WHERE pharmacy_id = $2)`,
+      [groupId, pharmacyId],
+    );
 
     return res.json({ ok: true });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("leaveGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1804,12 +1925,20 @@ export const removeGroupMember = async (req, res) => {
        WHERE group_id = $1 AND pharmacy_id = $2`,
       [groupId, memberPharmacyId],
     );
+    // M24: also remove shared listings for the removed member in this group
+    await pool.query(
+      `DELETE FROM inventory_listing_groups
+       WHERE group_id = $1
+         AND listing_id IN (SELECT id FROM inventory_listings WHERE pharmacy_id = $2)`,
+      [groupId, memberPharmacyId],
+    );
 
     return res.json({ ok: true });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("removeGroupMember error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1858,7 +1987,8 @@ export const deleteGroup = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteGroup error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -1929,7 +2059,8 @@ export const getMyInvitations = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getMyInvitations error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2008,31 +2139,49 @@ export const acceptInvitation = async (req, res) => {
             : "Requester is already in 5 groups",
       });
 
-    const dup = await pool.query(
-      `SELECT 1 FROM inventory_group_members
-       WHERE group_id = $1 AND pharmacy_id = $2`,
-      [inv.group_id, memberPharmacyId],
-    );
-    if (dup.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO inventory_group_members (group_id, pharmacy_id, user_id, role)
-         VALUES ($1, $2, $3, 'member')`,
-        [inv.group_id, memberPharmacyId, memberUserId],
+    const acceptClient = await pool.connect();
+    try {
+      await acceptClient.query("BEGIN");
+      const capRecheck = await acceptClient.query(
+        `SELECT g.max_members,
+           (SELECT COUNT(*) FROM inventory_group_members WHERE group_id = g.id) AS member_count
+         FROM inventory_groups g WHERE g.id = $1 AND g.is_active = true FOR UPDATE`,
+        [inv.group_id],
       );
+      if (!capRecheck.rows.length) { await acceptClient.query("ROLLBACK"); return res.status(404).json({ error: "Group not found" }); }
+      if (Number(capRecheck.rows[0].member_count) >= capRecheck.rows[0].max_members) {
+        await acceptClient.query("ROLLBACK");
+        return res.status(400).json({ error: "Group is at maximum capacity" });
+      }
+      const dupMember = await acceptClient.query(
+        `SELECT 1 FROM inventory_group_members WHERE group_id = $1 AND pharmacy_id = $2`,
+        [inv.group_id, memberPharmacyId],
+      );
+      if (dupMember.rows.length === 0) {
+        await acceptClient.query(
+          `INSERT INTO inventory_group_members (group_id, pharmacy_id, user_id, role)
+           VALUES ($1, $2, $3, 'member')`,
+          [inv.group_id, memberPharmacyId, memberUserId],
+        );
+      }
+      await acceptClient.query(
+        `UPDATE inventory_group_invitations SET status = 'accepted', responded_at = NOW() WHERE id = $1`,
+        [invitationId],
+      );
+      await acceptClient.query("COMMIT");
+    } catch (txErr) {
+      await acceptClient.query("ROLLBACK");
+      throw txErr;
+    } finally {
+      acceptClient.release();
     }
-
-    await pool.query(
-      `UPDATE inventory_group_invitations
-       SET status = 'accepted', responded_at = NOW()
-       WHERE id = $1`,
-      [invitationId],
-    );
 
     return res.json({ ok: true, group_id: inv.group_id });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("acceptInvitation error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2087,7 +2236,8 @@ export const declineInvitation = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("declineInvitation error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2106,9 +2256,8 @@ export const searchPharmacies = async (req, res) => {
     const result = await pool.query(
       `SELECT
          p.id, p.pharmacy_name, p.address, p.npi_number, p.ncpdp_number,
-         p.pharmacist_name, u.email
+         p.pharmacist_name
        FROM pharmacy_details p
-       LEFT JOIN users u ON u.id = p.user_id
        WHERE p.id != COALESCE($1::uuid, '00000000-0000-0000-0000-000000000000')
          AND (
            p.pharmacy_name ILIKE $2
@@ -2123,7 +2272,8 @@ export const searchPharmacies = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("searchPharmacies error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2215,7 +2365,8 @@ export const addGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("addGroupReport error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2273,7 +2424,8 @@ export const contributeGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("contributeGroupReport error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2314,7 +2466,8 @@ export const getGroupReports = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupReports error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2346,7 +2499,7 @@ export const getGroupReportDetail = async (req, res) => {
     const creatorPharmacyId = repRes.rows[0].pharmacy_id;
     const rowsRes = await pool.query(
       `SELECT ndc, drug_name, package_size, highest_shortage, rank,
-              pharmacy_name, sort_order
+              pharmacy_id, pharmacy_name, sort_order
        FROM inventory_group_report_rows
        WHERE report_id = $1
        ORDER BY (pharmacy_id = $2) DESC, pharmacy_name, sort_order`,
@@ -2354,11 +2507,16 @@ export const getGroupReportDetail = async (req, res) => {
     );
 
     // Pivot: union drugs by NDC, one value column per contributor pharmacy.
+    // Columns are keyed by pharmacy id, not by name: two pharmacies with the
+    // same name must stay two columns. Older rows saved without an id fall
+    // back to a key made from the name, so they are not all folded into one.
+    //   pharmacies : [{ id, name }]   (id is the key used in row.values)
     const pharmacies = [];
     const byNdc = new Map();
     for (const r of rowsRes.rows) {
       const name = r.pharmacy_name || "Pharmacy";
-      if (!pharmacies.includes(name)) pharmacies.push(name);
+      const pid = r.pharmacy_id || `name:${name}`;
+      if (!pharmacies.find((p) => p.id === pid)) pharmacies.push({ id: pid, name });
       const key = r.ndc ?? "";
       if (!byNdc.has(key)) {
         byNdc.set(key, {
@@ -2374,7 +2532,7 @@ export const getGroupReportDetail = async (req, res) => {
       if (row.drug_name == null) row.drug_name = r.drug_name;
       if (row.package_size == null) row.package_size = r.package_size;
       if (row.rank == null) row.rank = r.rank;
-      row.values[name] = r.highest_shortage;
+      row.values[pid] = r.highest_shortage;
     }
 
     // Matching rule: with 2+ pharmacies show only NDCs every pharmacy has
@@ -2383,16 +2541,27 @@ export const getGroupReportDetail = async (req, res) => {
     if (pharmacies.length > 1) {
       rows = rows.filter((row) =>
         pharmacies.every((ph) =>
-          Object.prototype.hasOwnProperty.call(row.values, ph),
+          Object.prototype.hasOwnProperty.call(row.values, ph.id),
         ),
       );
+    }
+
+    // A sanity ceiling only. A real report (one row per drug) is a few
+    // thousand rows; 5,000 was low enough to refuse a large pharmacy's
+    // report, and this screen has no filters to make it smaller.
+    const MAX_REPORT_ITEMS = 50000;
+    if (rows.length > MAX_REPORT_ITEMS) {
+      return res.status(400).json({
+        error: `This report has ${rows.length} rows, which is more than can be shown (${MAX_REPORT_ITEMS}).`,
+      });
     }
 
     return res.json({ report: repRes.rows[0], pharmacies, rows });
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("getGroupReportDetail error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -2423,6 +2592,7 @@ export const deleteGroupReport = async (req, res) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     console.error("deleteGroupReport error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };

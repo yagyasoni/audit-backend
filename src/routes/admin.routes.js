@@ -9,6 +9,16 @@ import Stripe from "stripe";
 // import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { requireAdmin, requireAuth } from "../middleware/auth.js";
+import { largeJson } from "../middleware/body.js";
+
+// Text typed by a user goes into an email as plain text, never as HTML.
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 const feedbackEmailTemplate = (feedback) => `
 <div style="font-family: Arial, sans-serif; background-color:#f4f6f8; padding:20px;">
@@ -19,9 +29,9 @@ const feedbackEmailTemplate = (feedback) => `
     </div>
 
     <div style="padding:24px; color:#1f2937;">
-      <p><b>Subject:</b> ${feedback.subject}</p>
+      <p><b>Subject:</b> ${escapeHtml(feedback.subject)}</p>
       <p><b>Message:</b></p>
-      <p style="margin-top:8px;">${feedback.message}</p>
+      <p style="margin-top:8px; white-space:pre-wrap;">${escapeHtml(feedback.message)}</p>
 
       <p style="margin-top:20px; font-size:12px; color:#64748b;">
         Submitted at: ${new Date(feedback.created_at).toLocaleString()}
@@ -87,6 +97,10 @@ router.use((req, res, next) => {
   return requireAdmin(req, res, next);
 });
 
+// Admin saves (master sheet and other imports) can be large. The large body
+// is read here, after the login check above (see middleware/body.js).
+router.use(largeJson);
+
 // DELETE /admin/users/:id
 
 router.delete("/users/:id", async (req, res) => {
@@ -108,7 +122,7 @@ router.delete("/users/:id", async (req, res) => {
   }
 
   // Optional safety: don't let an admin delete their own account
-  if (id === adminId) {
+  if (String(id).toLowerCase() === String(adminId).toLowerCase()) {
     return res
       .status(400)
       .json({ success: false, message: "You cannot delete your own account" });
@@ -149,7 +163,7 @@ router.delete("/users/:id", async (req, res) => {
 
     // 1️⃣ Check user
     const userCheck = await client.query(
-      "SELECT id, email FROM users WHERE id = $1",
+      "SELECT id, email, role FROM users WHERE id = $1",
       [id],
     );
 
@@ -158,6 +172,14 @@ router.delete("/users/:id", async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
+    }
+
+    // Admin accounts are not deleted from this screen.
+    if (userCheck.rows[0].role === "admin") {
+      await client.query("ROLLBACK");
+      return res
+        .status(400)
+        .json({ success: false, message: "Admin accounts cannot be deleted here" });
     }
 
     const email = userCheck.rows[0].email;
@@ -204,8 +226,14 @@ router.delete("/users/:id", async (req, res) => {
     await client.query("DELETE FROM users WHERE id = $1", [id]);
 
     // 4️⃣ Manual cleanup
-    await client.query("DELETE FROM email_otps WHERE email = $1", [email]);
-    await client.query("DELETE FROM password_resets WHERE email = $1", [email]);
+    await client.query(
+      "DELETE FROM email_otps WHERE LOWER(email) = LOWER($1)",
+      [email],
+    );
+    await client.query(
+      "DELETE FROM password_resets WHERE LOWER(email) = LOWER($1)",
+      [email],
+    );
 
     // 4️⃣ Stop the billing. Deleting the account without this left the
     // Stripe subscription running, so the card kept being charged. It is the
@@ -726,7 +754,10 @@ router.get("/master-sheet-queue/stats", async (req, res) => {
 
 router.post("/feedbacks", async (req, res) => {
   try {
-    const { user_id, subject, message } = req.body;
+    const { subject, message } = req.body;
+    // The feedback belongs to the logged-in pharmacy. A user id sent by the
+    // page is ignored, so feedback cannot be filed under another name.
+    const user_id = req.user?.userId || null;
 
     if (!subject || !message) {
       return res.status(400).json({ message: "Subject and message required" });
@@ -736,7 +767,7 @@ router.post("/feedbacks", async (req, res) => {
       `INSERT INTO feedbacks (user_id, subject, message)
        VALUES ($1, $2, $3)
        RETURNING *`,
-      [user_id || null, subject, message],
+      [user_id, subject, message],
     );
 
     const feedback = result.rows[0];
@@ -828,7 +859,7 @@ router.post("/pbm-options", async (req, res) => {
     const existing = await pool.query(
       `
       SELECT * FROM pbm_options
-      WHERE LOWER(name) = LOWER($1)
+      WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
       `,
       [name],
     );
@@ -895,7 +926,7 @@ router.post("/payer-type-options", async (req, res) => {
     const existing = await pool.query(
       `
       SELECT * FROM payer_type_options
-      WHERE LOWER(name) = LOWER($1)
+      WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
       `,
       [name],
     );

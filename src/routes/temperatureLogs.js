@@ -1,10 +1,17 @@
 import express from "express";
 import { list, save, remove } from "../controllers/temperatureLogs.js";
 import { requireAuth, requirePlan } from "../middleware/auth.js";
+import { perUser } from "../middleware/rateLimit.js";
 
 const router = express.Router();
 
-router.use(requireAuth, requirePlan("inventory_reports_access"));
+// 100 requests a minute for one pharmacy (counted per login, after the
+// login check).
+router.use(
+  requireAuth,
+  requirePlan("inventory_reports_access"),
+  perUser({ minutes: 1, limit: 100 }),
+);
 router.get("/", list);
 router.put("/", save);
 router.delete("/:id", remove);

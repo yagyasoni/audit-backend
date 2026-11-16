@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "migrate": "node src/config/migrate.js"
+    "start": "node src/server.js"
   },
   "keywords": [],
   "author": "",
@@ -14,9 +13,7 @@
   "type": "module",
   "dependencies": {
     "@fast-csv/format": "^5.0.5",
-    "bad-words": "^4.0.0",
     "bcrypt": "^6.0.0",
-    "body-parser": "^2.2.2",
     "cors": "^2.8.6",
     "csv-parse": "^6.1.0",
     "csv-parser": "^3.2.0",

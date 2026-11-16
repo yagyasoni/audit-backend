@@ -7,6 +7,7 @@ import {
   requireAdmin,
 } from "../middleware/auth.js";
 import { getClientInfo } from "../services/metaCapi.service.js";
+import { sendGA4Event } from "../services/ga4mp.service.js";
 
 const router = express.Router();
 
@@ -41,6 +42,15 @@ const PLAN_TIER = {
 
 const VALID_PLANS = ["base", "professional", "full_access"];
 
+// The website address Stripe sends the customer back to. Taken from
+// FRONTEND_URL when it is set; otherwise the live site. (Without the
+// fallback a server with no FRONTEND_URL would hand Stripe the address
+// "undefined/Mainpage" and every checkout would fail.)
+const SITE_URL = (process.env.FRONTEND_URL || "https://www.auditprorx.com")
+  .split(",")[0]
+  .trim()
+  .replace(/\/+$/, "");
+
 // =========================================
 // TRIAL CODE VALIDATION
 // The "coupon" lives in our trial_codes table (NOT in Stripe), because
@@ -54,6 +64,7 @@ async function validateTrialCode(code, userId) {
 
   const normalized = code.trim().toUpperCase();
 
+  // Basic checks before attempting the atomic increment
   const { rows } = await pool.query(
     `SELECT trial_days, active, max_redemptions, times_redeemed, expires_at
        FROM trial_codes WHERE code = $1`,
@@ -65,6 +76,7 @@ async function validateTrialCode(code, userId) {
   if (!tc.active) return { ok: false, reason: "Code is no longer active" };
   if (tc.expires_at && new Date(tc.expires_at) < new Date())
     return { ok: false, reason: "Code has expired" };
+
   if (tc.max_redemptions !== null && tc.times_redeemed >= tc.max_redemptions)
     return { ok: false, reason: "Code redemption limit reached" };
 
@@ -93,6 +105,30 @@ async function isSubscriptionAlive(stripeSubscriptionId) {
       await stripe.subscriptions.retrieve(stripeSubscriptionId);
     return !ENDED_SUBSCRIPTION_STATES.includes(subscription.status);
   } catch (error) {
+    if (error?.code === "resource_missing") return false;
+    throw error;
+  }
+}
+
+// =========================================
+// DOES THIS STRIPE CUSTOMER ALREADY HAVE A SUBSCRIPTION?
+// Our database learns about a new subscription only when the webhook
+// arrives, a moment after payment. A second checkout started in another tab
+// in that moment would create a second subscription and charge twice. So
+// before starting a checkout, Stripe itself is asked.
+// =========================================
+async function customerHasLiveSubscription(customerId) {
+  try {
+    const list = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 20,
+    });
+    return list.data.some(
+      (subscription) => !ENDED_SUBSCRIPTION_STATES.includes(subscription.status),
+    );
+  } catch (error) {
+    // The customer no longer exists in Stripe: nothing to protect.
     if (error?.code === "resource_missing") return false;
     throw error;
   }
@@ -142,6 +178,7 @@ router.post("/create-checkout-session", requireAuth, async (req, res) => {
       trialCode = null,
       fbp = null,
       fbc = null,
+      ga4ClientId = null,
     } = req.body;
 
     if (!plan)
@@ -190,8 +227,11 @@ router.post("/create-checkout-session", requireAuth, async (req, res) => {
       // alive in Stripe. A subscription that was cancelled (or never
       // completed) must not stop the customer from subscribing again.
       if (
-        existing.rows[0].stripe_subscription_id &&
-        (await isSubscriptionAlive(existing.rows[0].stripe_subscription_id))
+        (existing.rows[0].stripe_subscription_id &&
+          (await isSubscriptionAlive(
+            existing.rows[0].stripe_subscription_id,
+          ))) ||
+        (await customerHasLiveSubscription(customerId))
       )
         return res.status(400).json({
           error:
@@ -213,6 +253,11 @@ router.post("/create-checkout-session", requireAuth, async (req, res) => {
          updated_at         = NOW()`,
       [userId, customerId, referralCode],
     );
+
+    // L8: TODO — referral credit: look up the referrer by referralCode and
+    // increment their referral_count in users table once checkout completes.
+    // Currently the code is stored in subscriptions.referral_code but the
+    // referrer never receives credit. Implement via webhook checkout.session.completed.
 
     // ─── Build subscription_data — trial ONLY when a valid code exists ─────
 
@@ -245,9 +290,21 @@ router.post("/create-checkout-session", requireAuth, async (req, res) => {
       metadata,
       subscription_data,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url:
-        "https://www.auditprorx.com/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://www.auditprorx.com/cancel",
+      success_url: `${SITE_URL}/Mainpage?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${SITE_URL}/cancel`,
+    });
+
+    // GA4 — begin_checkout fires when the Stripe session is successfully created.
+    sendGA4Event({
+      eventName: "begin_checkout",
+      clientId: ga4ClientId,
+      userId,
+      params: {
+        currency: "USD",
+        value: plan === "base" ? 99 : plan === "professional" ? 249 : 399,
+        items: [{ item_id: plan, item_name: plan }],
+        ...(trial?.ok ? { coupon: trial.code } : {}),
+      },
     });
 
     return res.json({ url: session.url });
@@ -438,6 +495,18 @@ router.post("/cancel-subscription", requireAuth, async (req, res) => {
         .status(400)
         .json({ error: "Subscription is already canceled" });
 
+    // M31: if a subscription schedule (downgrade) is attached, release it first
+    // so Stripe doesn't reject the cancel/update call
+    if (subscription.schedule) {
+      await stripe.subscriptionSchedules.release(subscription.schedule);
+      // The planned downgrade is gone with the schedule.
+      await pool.query(
+        `UPDATE subscriptions SET pending_plan = NULL, updated_at = NOW()
+          WHERE user_id = $1`,
+        [userId],
+      );
+    }
+
     // ── In trial: cancel immediately, user never charged ──────────────────
     // NOTE: trial_code is intentionally NOT cleared — it stays as the
     // permanent "this user already used a trial" marker.
@@ -532,53 +601,6 @@ router.post("/cancel-subscription", requireAuth, async (req, res) => {
   }
 });
 
-// =========================================
-// REACTIVATE SUBSCRIPTION (undo a pending cancel)
-// =========================================
-
-router.post("/reactivate-subscription", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const result = await pool.query(
-      `SELECT stripe_subscription_id FROM subscriptions WHERE user_id = $1`,
-      [userId],
-    );
-
-    const stripeSubscriptionId = result.rows[0]?.stripe_subscription_id;
-    if (!stripeSubscriptionId)
-      return res.status(404).json({ error: "No subscription found" });
-
-    const subscription =
-      await stripe.subscriptions.retrieve(stripeSubscriptionId);
-
-    if (!subscription.cancel_at_period_end)
-      return res
-        .status(400)
-        .json({ error: "Subscription is not pending cancellation" });
-
-    await stripe.subscriptions.update(stripeSubscriptionId, {
-      cancel_at_period_end: false,
-    });
-
-    await pool.query(
-      `UPDATE subscriptions
-       SET cancel_at_period_end=false, grace_period_end=NULL, updated_at=NOW()
-       WHERE user_id = $1`,
-      [userId],
-    );
-
-    console.log(`♻️  Subscription reactivated for user ${userId}`);
-
-    return res.json({
-      success: true,
-      message: "Subscription reactivated successfully.",
-    });
-  } catch (error) {
-    console.error("❌ Reactivate error:", error);
-    return res.status(500).json({ error: "Failed to reactivate subscription" });
-  }
-});
 
 // =========================================
 // BILLING PORTAL

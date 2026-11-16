@@ -5,19 +5,31 @@ import { Resend } from "resend";
 import { pool } from "../config/db.js";
 import { readInventoryCSV } from "../utils/inventoryNormalizer.js";
 import { parseAmount } from "../utils/number.js";
+import { cleanDate, isBadDate, badDateMessage } from "../utils/dates.js";
+import { UploadRefused } from "../utils/uploadRefused.js";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const normalizeNDC = (ndc) => {
   if (!ndc) return null;
+  const raw = String(ndc).trim();
+  const parts = raw.split("-");
 
-  // 1. Keep only digits
-  let digits = ndc.replace(/\D/g, "");
+  if (parts.length === 3) {
+    const [a, b, c] = parts.map((p) => p.replace(/\D/g, ""));
+    let seg1 = a, seg2 = b, seg3 = c;
+    if (a.length === 5 && b.length === 3 && c.length === 2) {
+      seg2 = "0" + b; // 5-3-2 → 5-4-2
+    } else if (a.length === 5 && b.length === 4 && c.length === 1) {
+      seg3 = "0" + c; // 5-4-1 → 5-4-2
+    } else if (a.length === 4 && b.length === 4 && c.length === 2) {
+      seg1 = "0" + a; // 4-4-2 → 5-4-2
+    }
+    return `${seg1.padStart(5, "0")}-${seg2.padStart(4, "0")}-${seg3.padStart(2, "0")}`;
+  }
 
-  // 2. Pad to 11 digits
-  digits = digits.padStart(11, "0");
-
-  // 3. Format to 5-4-2
+  // No dashes — strip non-digits, pad to 11 from the front
+  const digits = raw.replace(/\D/g, "").padStart(11, "0");
   return `${digits.slice(0, 5)}-${digits.slice(5, 9)}-${digits.slice(9, 11)}`;
 };
 
@@ -102,85 +114,7 @@ const cleanInt = (v) => {
   return n === null ? null : Math.trunc(n);
 };
 
-const cleanDate = (v) => {
-  if (v === null || v === undefined || v === "") return null;
-  let s = String(v).trim();
-  if (!s) return null;
-
-  // ── Strip trailing time component, ALL common variants ──
-  //   "3/15/2025 10:30"
-  //   "3/15/2025 10:30:00"
-  //   "3/15/2025 10:30 AM"
-  //   "3/15/2025 10:30:00 PM"
-  //   "3/15/2025 0:00"
-  //   "2025-03-15T10:30:00.000Z"
-  //   "2025-03-15 10:30:00"
-  s = s
-    .replace(/[T\s]+\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\s*(Z|[AP]M)?$/i, "")
-    .trim();
-
-  // ── ISO YYYY-MM-DD ──
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-  // ── M/D/YYYY or MM/DD/YYYY ──
-  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    return `${m[3]}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
-  }
-
-  // ── M/D/YY (2-digit year) ──
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (m) {
-    const yy = parseInt(m[3], 10);
-    const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
-    return `${yyyy}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
-  }
-
-  // ── M-D-YYYY or MM-DD-YYYY ──
-  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (m) {
-    return `${m[3]}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
-  }
-
-  // ── M-D-YY (2-digit year, dash separator) ──
-  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
-  if (m) {
-    const yy = parseInt(m[3], 10);
-    const yyyy = yy >= 70 ? 1900 + yy : 2000 + yy;
-    return `${yyyy}-${String(m[1]).padStart(2, "0")}-${String(m[2]).padStart(2, "0")}`;
-  }
-
-  // ── Excel serial number ──
-  if (/^\d+(\.\d+)?$/.test(s)) {
-    const serial = parseFloat(s);
-    if (serial >= 10000 && serial <= 80000) {
-      const utcMs = (serial - 25569) * 86400 * 1000;
-      const d = new Date(utcMs);
-      if (!isNaN(d.getTime())) {
-        const yyyy = d.getUTCFullYear();
-        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(d.getUTCDate()).padStart(2, "0");
-        return `${yyyy}-${mm}-${dd}`;
-      }
-    }
-    return null;
-  }
-
-  // ── Last-resort fallback: let JS try to parse it ──
-  const parsed = new Date(s);
-  if (!isNaN(parsed.getTime())) {
-    const yyyy = parsed.getFullYear();
-    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-    const dd = String(parsed.getDate()).padStart(2, "0");
-    if (yyyy >= 1900 && yyyy <= 2100) {
-      return `${yyyy}-${mm}-${dd}`;
-    }
-  }
-
-  // ── Log what we rejected so we can see future problem formats ──
-  console.warn("cleanDate rejected value:", JSON.stringify(v));
-  return null;
-};
+// cleanDate / isBadDate: see ../utils/dates.js
 
 const cleanDateNew = (v) => {
   if (!v) return null;
@@ -267,7 +201,6 @@ export const saveInventoryFile = async (
     if (auditCheck.rows.length === 0) throw new Error("Audit not found");
 
     console.log("Reading file:", filePath);
-    console.log("Header mapping:", headerMapping);
     console.log("Exclusions:", { excludeTransferred, excludeUnbilled });
 
     const { rows: records, totalRows, skippedRows } = readInventoryCSV(
@@ -280,7 +213,7 @@ export const saveInventoryFile = async (
     );
 
     if (records.length === 0 && skippedRows > 0) {
-      throw new Error(
+      throw new UploadRefused(
         "No row in this file could be read: every row has a different number of columns than the header. Nothing was changed.",
       );
     }
@@ -301,6 +234,17 @@ export const saveInventoryFile = async (
       `After exclusions: ${filteredRecords.length} rows (dropped ${droppedCount})`,
     );
 
+    // A date that does not exist (month 13, 30 February) almost always
+    // means a day/month/year file read as month/day/year. Saving it would
+    // store wrong or empty dates without a word, so the file is refused
+    // with the lines to look at.
+    const badDates = filteredRecords
+      .filter((r) => isBadDate(r.date_filled))
+      .map((r) => ({ line: r._line, value: r.date_filled }));
+    if (badDates.length > 0) {
+      throw new UploadRefused(badDateMessage("This file", badDates));
+    }
+
     stats = {
       total: totalRows, // data rows in the file
       skipped: skippedRows, // refused: wrong number of columns
@@ -308,7 +252,7 @@ export const saveInventoryFile = async (
       inserted: filteredRecords.length,
     };
   } catch (e) {
-    console.error("INVENTORY FILE REFUSED:", e);
+    console.error("INVENTORY FILE REFUSED:", e.message);
     removeFileQuietly(filePath); // the new upload is not kept
     throw e;
   }
@@ -355,7 +299,6 @@ export const saveInventoryFile = async (
     fileRecord = result.rows[0];
 
     if (filteredRecords.length > 0) {
-      console.log("First row sample:", JSON.stringify(filteredRecords[0]));
       const inserted = await insertInventoryRows(
         auditId,
         filteredRecords,
@@ -386,145 +329,6 @@ export const saveInventoryFile = async (
   return { file: fileRecord, rows: stats };
 };
 
-// ── BULK INSERT with chunking (max 1000 rows per query to stay under 65,535 param limit) ──
-// export const insertInventoryRows = async (auditId, rows) => {
-//   if (!rows.length) return { inserted: 0 };
-
-//   const client = await pool.connect();
-//   const CHUNK_SIZE = 1000; // 1000 rows × 15 cols = 15,000 params — safe
-
-//   try {
-//     await client.query("BEGIN");
-
-//     for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-//       const chunk = rows.slice(i, i + CHUNK_SIZE);
-//       const values = [];
-
-//       const placeholders = chunk.map((r, idx) => {
-//         const base = idx * 15;
-//         values.push(
-//           auditId,
-//           r.ndc || null,
-//           r.rx_number || null,
-//           r.status || null,
-//           cleanDate(r.date_filled),
-//           r.drug_name || null,
-//           r.quantity ? parseInt(r.quantity) : null,
-//           r.package_size || null,
-//           r.primary_bin || null,
-//           r.primary_pcn || null,
-//           r.primary_group || null,
-//           r.primary_paid ? parseFloat(r.primary_paid) : null,
-//           r.secondary_bin || null,
-//           r.secondary_paid ? parseFloat(r.secondary_paid) : null,
-//           r.brand || null,
-//         );
-//         return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15})`;
-//       });
-
-//       await client.query(
-//         `INSERT INTO inventory_rows
-//          (audit_id, ndc, rx_number, status, date_filled, drug_name, quantity, package_size,
-//           primary_bin, primary_pcn, primary_group, primary_paid, secondary_bin, secondary_paid, brand)
-//          VALUES ${placeholders.join(",")}`,
-//         values,
-//       );
-
-//       console.log(
-//         `✅ Chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(rows.length / CHUNK_SIZE)} inserted`,
-//       );
-//     }
-
-//     const queueInsertResult = await client.query(
-//       `
-//   INSERT INTO master_sheet_queue (bin, pcn, grp)
-//   SELECT DISTINCT
-//     LPAD(TRIM(i.primary_bin), 6, '0'),
-//     LOWER(TRIM(i.primary_pcn)),
-//     LOWER(TRIM(i.primary_group))
-
-//   FROM inventory_rows i
-
-//   LEFT JOIN master_sheet m
-//     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(m.bin), 6, '0')
-//    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(m.pcn)), '')
-//    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(m.grp)), '')
-
-//   LEFT JOIN master_sheet_queue q
-//     ON LPAD(TRIM(i.primary_bin), 6, '0') = LPAD(TRIM(q.bin), 6, '0')
-//    AND COALESCE(LOWER(TRIM(i.primary_pcn)), '') = COALESCE(LOWER(TRIM(q.pcn)), '')
-//    AND COALESCE(LOWER(TRIM(i.primary_group)), '') = COALESCE(LOWER(TRIM(q.grp)), '')
-
-//   WHERE i.audit_id = $1
-//     AND m.id IS NULL
-//     AND q.id IS NULL
-//     AND i.primary_bin IS NOT NULL
-
-//   ON CONFLICT DO NOTHING
-
-//   RETURNING bin, pcn, grp
-// `,
-//       [auditId],
-//     );
-
-//     const newQueueRows = queueInsertResult.rows;
-
-//     if (newQueueRows.length > 0) {
-//       // 🔥 SEND ONE EMAIL (summary)
-//       resend.emails
-//         .send({
-//           from: process.env.EMAIL_FROM,
-//           to: "auditprorx@gmail.com",
-//           subject: "New Queue Items Detected",
-//           html: `
-//       <div style="font-family: Arial; padding:20px;">
-//         <h2>New Queue Items Added</h2>
-//         <p><b>Total New Items:</b> ${newQueueRows.length}</p>
-
-//         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-//           <tr>
-//             <th>BIN</th>
-//             <th>PCN</th>
-//             <th>GRP</th>
-//           </tr>
-
-//           ${newQueueRows
-//             .slice(0, 10) // limit preview
-//             .map(
-//               (r) => `
-//               <tr>
-//                 <td>${r.bin}</td>
-//                 <td>${r.pcn || "-"}</td>
-//                 <td>${r.grp || "-"}</td>
-//               </tr>
-//             `,
-//             )
-//             .join("")}
-//         </table>
-
-//         ${
-//           newQueueRows.length > 10
-//             ? `<p>...and ${newQueueRows.length - 10} more</p>`
-//             : ""
-//         }
-//       </div>
-//     `,
-//         })
-//         .catch(console.error);
-//     }
-
-//     await client.query("COMMIT");
-
-//     console.log(`✅ All ${rows.length} inventory rows inserted`);
-//     return { inserted: rows.length };
-//   } catch (err) {
-//     await client.query("ROLLBACK");
-//     throw err;
-//   } finally {
-//     client.release();
-//   }
-// };
-
 export const insertInventoryRows = async (
   auditId,
   rows,
@@ -542,15 +346,6 @@ export const insertInventoryRows = async (
 
   try {
     if (ownTransaction) await client.query("BEGIN");
-
-    // =========================================
-    // NDC SHEET SYNC (one set-based statement)
-    // This used to loop over every unique NDC and run two SELECTs plus an
-    // INSERT each. With no index on inventory_rows.ndc, every one of those
-    // SELECTs was a full table scan, so a large upload pinned the CPU for
-    // minutes. Same rules as before: skip NDCs already in ndc_sheet, mark
-    // "reviewed" if the NDC was ever seen in inventory_rows, else "pending".
-    // =========================================
 
     const uniqueNdcMap = new Map();
     for (const row of rows) {
@@ -742,50 +537,41 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
       const filePath = path.join(uploadDir, fileObj.file_name);
       if (!fs.existsSync(filePath)) {
         console.warn("Wholesaler file not found:", filePath);
-        return { fileObj, rows: [] };
+        return { fileObj, rows: [], skipped: 0 };
       }
 
       const content = fs.readFileSync(filePath, "utf-8");
       let records;
       try {
         records = parse(content, {
+          // Excel's "CSV UTF-8" starts the file with a hidden mark. Without
+          // bom:true that mark becomes part of the first column's name, the
+          // column is never found, and every row loses its first value.
+          bom: true,
           columns: true,
           skip_empty_lines: true,
           trim: true,
         });
       } catch (err) {
-        throw new Error(
+        throw new UploadRefused(
           `${fileObj.wholesaler_name}: the file could not be read as a CSV (${err.message}). Nothing was changed. Please fix the file and upload it again.`,
         );
       }
 
       const mapping = fileObj.headerMapping || {};
       console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
-      if (records.length > 0) {
-        const testInvoice = mapping.invoiceDate
-          ? records[0][mapping.invoiceDate]
-          : "NO_MAPPING_KEY";
-        console.log("INVOICE DATE DEBUG:", {
-          mappingKey: mapping.invoiceDate,
-          rawValue: testInvoice,
-          cleaned: mapping.invoiceDate
-            ? cleanDate(records[0][mapping.invoiceDate])
-            : null,
-          csvHeaders: Object.keys(records[0]),
-        });
-      }
       console.log(
-        "SAMPLE ROW KEYS:",
+        "WHOLESALER COLUMNS:",
         records.length > 0 ? Object.keys(records[0]) : [],
-      );
-      console.log(
-        "SAMPLE ROW:",
-        records.length > 0 ? JSON.stringify(records[0]) : "empty",
       );
 
       // One array per row, in the column order of the INSERT below
       // (after audit_id and wholesaler_file_id).
-      const rows = records.map((row) => {
+      const rows = [];
+      const badDates = [];
+      let skipped = 0;
+
+      records.forEach((row, index) => {
         const ndc = mapping.ndcNumber ? (row[mapping.ndcNumber] ?? null) : null;
         const invoiceDate = mapping.invoiceDate
           ? (row[mapping.invoiceDate] ?? null)
@@ -811,20 +597,44 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
             ? parseAmount(row[mapping.totalPrice])
             : null;
 
-        return [
+        // A row with neither an NDC nor a product name cannot be matched to
+        // anything (blank or "total" lines of the export). It is left out
+        // and counted.
+        if (!ndc && !productName) {
+          skipped += 1;
+          return;
+        }
+
+        // index 0 is the first data row = line 2 of the file
+        if (isBadDate(invoiceDate))
+          badDates.push({ line: index + 2, value: invoiceDate });
+
+        rows.push([
           ndc,
           productName,
           quantity,
           unitCost,
           totalCost,
           cleanDate(invoiceDate),
-        ];
+        ]);
       });
 
-      return { fileObj, rows };
+      if (badDates.length > 0) {
+        throw new UploadRefused(
+          badDateMessage(`The ${fileObj.wholesaler_name} file`, badDates),
+        );
+      }
+
+      if (skipped > 0) {
+        console.warn(
+          `⚠️  ${skipped} rows without NDC and product name skipped for ${fileObj.wholesaler_name}`,
+        );
+      }
+
+      return { fileObj, rows, skipped };
     });
   } catch (e) {
-    console.error("WHOLESALER FILE REFUSED:", e);
+    console.error("WHOLESALER FILE REFUSED:", e.message);
     newPaths.forEach(removeFileQuietly); // the new uploads are not kept
     throw e;
   }
@@ -834,12 +644,14 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
   //
   // Per-wholesaler replace: each wholesaler being uploaded clears ONLY its
   // own previous file/rows, leaving every other wholesaler on this audit
-  // untouched.
+  // untouched. Two files for the SAME wholesaler in one upload are both
+  // kept (the earlier data is cleared once, before the first of them), so
+  // the first file is no longer lost.
   const CHUNK_SIZE = 1000;
   const client = await pool.connect();
   const results = [];
   const removedNames = []; // files whose record was deleted
-  const keptNames = new Set(); // files whose record exists after this upload
+  const clearedWholesalers = new Set(); // wholesalers already cleared in this upload
 
   try {
     await client.query("BEGIN");
@@ -851,30 +663,33 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
       auditId,
     ]);
 
-    for (const { fileObj, rows } of prepared) {
-      const existingFiles = await client.query(
-        `SELECT id, file_name
-           FROM wholesaler_files
-          WHERE audit_id = $1
-            AND wholesaler_name = $2`,
-        [auditId, fileObj.wholesaler_name],
-      );
+    for (const { fileObj, rows, skipped } of prepared) {
+      if (!clearedWholesalers.has(fileObj.wholesaler_name)) {
+        clearedWholesalers.add(fileObj.wholesaler_name);
 
-      for (const oldFile of existingFiles.rows) {
-        // 1) delete child rows for this specific file
-        await client.query(
-          `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
-          [oldFile.id],
+        const existingFiles = await client.query(
+          `SELECT id, file_name
+             FROM wholesaler_files
+            WHERE audit_id = $1
+              AND wholesaler_name = $2`,
+          [auditId, fileObj.wholesaler_name],
         );
 
-        // 2) delete the file record
-        await client.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
-          oldFile.id,
-        ]);
+        for (const oldFile of existingFiles.rows) {
+          // 1) delete child rows for this specific file
+          await client.query(
+            `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
+            [oldFile.id],
+          );
 
-        // 3) the physical file is removed after the commit (step 3)
-        removedNames.push(oldFile.file_name);
-        keptNames.delete(oldFile.file_name);
+          // 2) delete the file record
+          await client.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
+            oldFile.id,
+          ]);
+
+          // 3) the physical file is removed after the commit (step 3)
+          removedNames.push(oldFile.file_name);
+        }
       }
 
       // ── Insert the new file record ──
@@ -885,7 +700,6 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
       );
 
       const wholesalerFileId = fileInsert.rows[0].id;
-      keptNames.add(fileObj.file_name);
 
       // ── BULK INSERT wholesaler rows in chunks ──
       for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
@@ -918,7 +732,8 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
         );
       }
 
-      results.push(fileInsert.rows[0]);
+      // skippedRows: rows of the file left out (no NDC and no product name)
+      results.push({ ...fileInsert.rows[0], skippedRows: skipped });
     }
 
     await client.query("COMMIT");
@@ -931,8 +746,9 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
   }
 
   // ── STEP 3: the new data is saved. Now the old files can go. ──
+  const newNames = new Set(filesArray.map((f) => f.file_name));
   for (const oldName of removedNames) {
-    if (oldName && !keptNames.has(oldName)) {
+    if (oldName && !newNames.has(oldName)) {
       removeFileQuietly(path.join(uploadDir, oldName));
     }
   }
@@ -941,209 +757,6 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
 
   return results;
 };
-
-// export const saveWholesalerFiles = async (auditId, filesArray) => {
-//   const auditCheck = await pool.query("SELECT id FROM audits WHERE id = $1", [
-//     auditId,
-//   ]);
-//   if (auditCheck.rows.length === 0) throw new Error("Audit not found");
-
-//   // ❌ REMOVED: the old blanket delete that wiped EVERY wholesaler file
-//   //    for this audit before each upload. That destroyed previously-uploaded
-//   //    files whenever the user uploaded a new batch.
-//   //
-//   //    await pool.query(`DELETE FROM wholesaler_rows WHERE audit_id = $1`, [auditId]);
-//   //    await pool.query(`DELETE FROM wholesaler_files WHERE audit_id = $1`, [auditId]);
-//   //
-//   // ✅ NEW: per-wholesaler replace. Each wholesaler being uploaded clears
-//   //    ONLY its own previous file/rows, leaving every other wholesaler
-//   //    on this audit untouched.
-
-//   const results = [];
-
-//   for (const fileObj of filesArray) {
-//     // ── Per-wholesaler cleanup (replace just this wholesaler) ──
-//     const existingFiles = await pool.query(
-//       `SELECT id, file_name
-//          FROM wholesaler_files
-//         WHERE audit_id = $1
-//           AND wholesaler_name = $2`,
-//       [auditId, fileObj.wholesaler_name],
-//     );
-
-//     for (const oldFile of existingFiles.rows) {
-//       // 1) delete child rows for this specific file
-//       await pool.query(
-//         `DELETE FROM wholesaler_rows WHERE wholesaler_file_id = $1`,
-//         [oldFile.id],
-//       );
-//       // 2) delete the file record
-//       await pool.query(`DELETE FROM wholesaler_files WHERE id = $1`, [
-//         oldFile.id,
-//       ]);
-//       // 3) remove the physical file from disk
-//       const oldPath = path.join(
-//         process.cwd(),
-//         "uploads/wholesalers",
-//         oldFile.file_name,
-//       );
-//       try {
-//         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-//       } catch (e) {
-//         console.warn(
-//           "Failed to delete old wholesaler file:",
-//           oldPath,
-//           e.message,
-//         );
-//       }
-//     }
-
-//     // ── Insert the new file record ──
-//     const fileInsert = await pool.query(
-//       `INSERT INTO wholesaler_files (audit_id, wholesaler_name, file_name)
-//        VALUES ($1, $2, $3) RETURNING *`,
-//       [auditId, fileObj.wholesaler_name, fileObj.file_name],
-//     );
-
-//     const wholesalerFileId = fileInsert.rows[0].id;
-
-//     const filePath = path.join(
-//       process.cwd(),
-//       "uploads/wholesalers",
-//       fileObj.file_name,
-//     );
-//     if (!fs.existsSync(filePath)) {
-//       console.warn("Wholesaler file not found:", filePath);
-//       results.push(fileInsert.rows[0]);
-//       continue;
-//     }
-
-//     const content = fs.readFileSync(filePath, "utf-8");
-//     const records = parse(content, {
-//       columns: true,
-//       skip_empty_lines: true,
-//       trim: true,
-//     });
-
-//     const mapping = fileObj.headerMapping || {};
-//     console.log("WHOLESALER MAPPING:", JSON.stringify(mapping));
-//     if (records.length > 0) {
-//       const testInvoice = mapping.invoiceDate
-//         ? records[0][mapping.invoiceDate]
-//         : "NO_MAPPING_KEY";
-//       console.log("INVOICE DATE DEBUG:", {
-//         mappingKey: mapping.invoiceDate,
-//         rawValue: testInvoice,
-//         cleaned: mapping.invoiceDate
-//           ? cleanDate(records[0][mapping.invoiceDate])
-//           : null,
-//         csvHeaders: Object.keys(records[0]),
-//       });
-//     }
-//     console.log(
-//       "SAMPLE ROW KEYS:",
-//       records.length > 0 ? Object.keys(records[0]) : [],
-//     );
-//     console.log(
-//       "SAMPLE ROW:",
-//       records.length > 0 ? JSON.stringify(records[0]) : "empty",
-//     );
-
-//     if (records.length === 0) {
-//       results.push(fileInsert.rows[0]);
-//       continue;
-//     }
-
-//     // ── BULK INSERT wholesaler rows in chunks (unchanged) ──
-//     const CHUNK_SIZE = 1000;
-//     const client = await pool.connect();
-
-//     try {
-//       await client.query("BEGIN");
-
-//       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-//         const chunk = records.slice(i, i + CHUNK_SIZE);
-//         const values = [];
-
-//         const placeholders = chunk.map((row, idx) => {
-//           const base = idx * 8;
-
-//           const ndc = mapping.ndcNumber
-//             ? (row[mapping.ndcNumber] ?? null)
-//             : null;
-//           const invoiceDate = mapping.invoiceDate
-//             ? (row[mapping.invoiceDate] ?? null)
-//             : null;
-//           const productName = mapping.itemDescription
-//             ? (row[mapping.itemDescription] ?? null)
-//             : null;
-//           const quantity =
-//             mapping.quantity &&
-//             row[mapping.quantity] !== undefined &&
-//             row[mapping.quantity] !== ""
-//               ? parseInt(
-//                   String(row[mapping.quantity]).replace(/[^0-9-]/g, ""),
-//                 ) || 0
-//               : null;
-//           const unitCost =
-//             mapping.unitPrice && row[mapping.unitPrice]
-//               ? parseFloat(
-//                   String(row[mapping.unitPrice]).replace(/[^0-9.]/g, ""),
-//                 )
-//               : null;
-//           const totalCost =
-//             mapping.totalPrice && row[mapping.totalPrice]
-//               ? parseFloat(
-//                   String(row[mapping.totalPrice]).replace(/[^0-9.]/g, ""),
-//                 )
-//               : null;
-
-//           values.push(
-//             auditId,
-//             wholesalerFileId,
-//             ndc,
-//             productName,
-//             quantity,
-//             unitCost,
-//             totalCost,
-//             cleanDate(invoiceDate),
-//           );
-
-//           return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
-//         });
-
-//         await client.query(
-//           `INSERT INTO wholesaler_rows
-//              (audit_id, wholesaler_file_id, ndc, product_name, quantity, unit_cost, total_cost, invoice_date)
-//            VALUES ${placeholders.join(",")}`,
-//           values,
-//         );
-
-//         console.log(
-//           `✅ Wholesaler chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(
-//             records.length / CHUNK_SIZE,
-//           )} inserted for ${fileObj.wholesaler_name}`,
-//         );
-//       }
-
-//       await client.query("COMMIT");
-//       console.log(
-//         `✅ All ${records.length} wholesaler rows inserted for ${fileObj.wholesaler_name}`,
-//       );
-//     } catch (err) {
-//       await client.query("ROLLBACK");
-//       throw err;
-//     } finally {
-//       client.release();
-//     }
-
-//     results.push(fileInsert.rows[0]);
-//   }
-
-//   await refreshAuditStatus(auditId);
-
-//   return results;
-// };
 
 export const getAudits = async (userId) => {
   const result = await pool.query(
@@ -1411,13 +1024,6 @@ export const getDrugWholesalerDetail = async (
   };
 };
 
-// ── Drug lookup: billed claims only ─────────────────────────────────────────
-// Every drug-lookup reader (global search, NDC rows, BIN/PCN/GRP drawer,
-// landing stats, per-audit lookup in the report) must reflect only what was
-// actually billed. F (filled, not billed), T (transferred) and U (unbilled)
-// rows stay in inventory_rows for the audit reports' own rules; they are just
-// never read here. status is a required upload column, so a strict 'B' match
-// is safe (the handful of blank-status rows are zero-quantity junk).
 const BILLED_ONLY = (col = "status") =>
   `UPPER(TRIM(COALESCE(${col}, ''))) = 'B'`;
 
@@ -1547,12 +1153,6 @@ export const getCommunityDataGlobal = async (
 };
 
 export const getDrugLookup = async (auditId, ingredient) => {
-  // Helper: the same regex is used in SELECT and GROUP BY. It strips a trailing
-  // "(12345-1234-12)" NDC pattern from drug_name so that
-  //   "ELIQUIS 5MG TAB (00003-0894-21)"
-  //   "ELIQUIS 5MG TAB (00003-0894-70)"
-  //   "ELIQUIS 5MG TAB (00003-3764-74)"
-  // all roll up into a single "ELIQUIS 5MG TAB" parent row.
   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
 
   // Parent rows — grouped by cleaned drug_name (across all NDCs of that strength)
@@ -1614,10 +1214,6 @@ export const getDrugLookup = async (auditId, ingredient) => {
 };
 
 export const searchDrugNames = async (query, limit = 10) => {
-  // Split into whitespace-separated tokens and require EVERY token to appear
-  // somewhere in drug_name (order-independent AND match). This lets multi-word
-  // queries like "nystatin triamcinol" match "NYSTATIN, TRIAMCINOL ..." even
-  // though punctuation/word-order differ. A single token behaves like before.
   const tokens = String(query ?? "")
     .trim()
     .split(/\s+/)
@@ -1626,7 +1222,12 @@ export const searchDrugNames = async (query, limit = 10) => {
 
   const conditions = tokens.map((_, i) => `drug_name ILIKE $${i + 1}`);
   const params = tokens.map((t) => `%${t}%`);
+  // Add exact-prefix param for relevance scoring (first token)
+  params.push(`${tokens[0]}%`);
   params.push(limit);
+
+  const exactPrefixIdx = tokens.length + 1;
+  const limitIdx = tokens.length + 2;
 
   const result = await pool.query(
     `
@@ -1635,8 +1236,13 @@ export const searchDrugNames = async (query, limit = 10) => {
     WHERE ${conditions.join(" AND ")}
       AND LENGTH(drug_name) <= 140
     GROUP BY drug_name
-    ORDER BY drug_name
-    LIMIT $${tokens.length + 1}
+    ORDER BY
+      CASE
+        WHEN drug_name ILIKE $${exactPrefixIdx} THEN 0
+        ELSE 1
+      END,
+      drug_name
+    LIMIT $${limitIdx}
     `,
     params,
   );
@@ -1647,25 +1253,6 @@ export const searchDrugNames = async (query, limit = 10) => {
   }));
 };
 
-// export const searchDrugNames = async (query, limit = 10) => {
-//   const result = await pool.query(
-//     `
-//     SELECT drug_name
-//     FROM ndc_sheet
-//     WHERE drug_name ILIKE $1
-//     GROUP BY drug_name
-//     ORDER BY drug_name
-//     LIMIT $2
-//     `,
-//     [`%${query}%`, limit],
-//   );
-
-//   return result.rows.map((r) => ({
-//     name: r.drug_name,
-//     rx_count: 0, // kept in response shape for FE compatibility
-//   }));
-// };
-
 export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
   const { bin, pcn, grp, ndc } = filters;
 
@@ -1673,9 +1260,6 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
   const NDC_NORM = (col) =>
     `RIGHT(LPAD(REGEXP_REPLACE(${col}, '[^0-9]', '', 'g'), 11, '0'), 10)`;
 
-  // Per-NDC canonical name. JOIN on normalized NDC so format differences
-  // between ndc_sheet.ndc and inventory_rows.ndc (hyphens, leading zeros)
-  // don't break the match.
   const NDC_NAME_CTE = `
     WITH ndc_name AS (
       SELECT
@@ -1708,10 +1292,6 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
     params.push(digits);
     pIdx++;
   } else if (ingredient && String(ingredient).trim()) {
-    // Match every whitespace token of the search term anywhere in the canonical
-    // name (order-independent), so e.g. "PROBIOTICS" lists BOTH
-    // "PROBIOTICS (BIOSTORA)" and "MICROBALANCE PROBIOTICS" — not just names
-    // that START with the term.
     const ingTokens = String(ingredient).trim().split(/\s+/).filter(Boolean);
     for (const tok of ingTokens) {
       conditions.push(`nn.raw_name ILIKE $${pIdx}`);
@@ -1835,156 +1415,9 @@ export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
 // export const getDrugLookupGlobal = async (ingredient, filters = {}) => {
 //   const { bin, pcn, grp, ndc } = filters;
 
-//   // Normalize an NDC to 10 digits (strip non-digits, left-pad to 11, take last 10)
-//   const NDC_NORM = (col) =>
-//     `RIGHT(LPAD(REGEXP_REPLACE(${col}, '[^0-9]', '', 'g'), 11, '0'), 10)`;
-
-//   // Per-NDC canonical name. JOIN on normalized NDC so format differences
-//   // between ndc_sheet.ndc and inventory_rows.ndc (hyphens, leading zeros)
-//   // don't break the match.
-//   const NDC_NAME_CTE = `
-//     WITH ndc_name AS (
-//       SELECT
-//         ${NDC_NORM("inventory_rows.ndc")} AS ndc_norm,
-//         COALESCE(MAX(ns.drug_name), MAX(inventory_rows.drug_name)) AS raw_name,
-//         MAX(ns.ndc) AS ns_ndc
-//       FROM inventory_rows
-//       LEFT JOIN ndc_sheet ns
-//         ON ${NDC_NORM("ns.ndc")} = ${NDC_NORM("inventory_rows.ndc")}
-//       WHERE inventory_rows.ndc IS NOT NULL
-//         AND TRIM(inventory_rows.ndc) <> ''
-//       GROUP BY ${NDC_NORM("inventory_rows.ndc")}
-//     )
-//   `;
-
 //   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(nn.raw_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
 
-//   // Build WHERE clause dynamically
-//   const conditions = [];
-//   const params = [];
-//   let pIdx = 1;
-
-//   // ── Primary filter: NDC OR ingredient ──
-//   if (ndc && String(ndc).trim()) {
-//     const digits = String(ndc).replace(/\D/g, "");
-//     conditions.push(
-//       `${NDC_NORM("inventory_rows.ndc")} = RIGHT(LPAD($${pIdx}, 11, '0'), 10)`,
-//     );
-//     params.push(digits);
-//     pIdx++;
-//   } else if (ingredient && String(ingredient).trim()) {
-//     // Filter by canonical name's first word, so renames in ndc_sheet are searchable.
-//     conditions.push(
-//       `UPPER(SPLIT_PART(TRIM(nn.raw_name), ' ', 1)) = UPPER($${pIdx})`,
-//     );
-//     params.push(ingredient);
-//     pIdx++;
-//   } else {
-//     // Neither provided — return empty shape
-//     return {
-//       ingredient: "",
-//       filters: { bin: null, pcn: null, grp: null, ndc: null },
-//       drugs: [],
-//     };
-//   }
-
-//   // ── Optional BIN/PCN/GRP filters ──
-//   if (bin && String(bin).trim()) {
-//     conditions.push(
-//       `LTRIM(UPPER(TRIM(COALESCE(primary_bin,''))),'0') = LTRIM(UPPER(TRIM($${pIdx})),'0')`,
-//     );
-//     params.push(String(bin).trim());
-//     pIdx++;
-//   }
-//   if (pcn && String(pcn).trim()) {
-//     conditions.push(
-//       `UPPER(TRIM(COALESCE(primary_pcn,''))) = UPPER(TRIM($${pIdx}))`,
-//     );
-//     params.push(String(pcn).trim());
-//     pIdx++;
-//   }
-//   if (grp && String(grp).trim()) {
-//     conditions.push(
-//       `UPPER(COALESCE(NULLIF(TRIM(primary_group), ''), 'NO_GROUP')) = UPPER(TRIM($${pIdx}))`,
-//     );
-//     params.push(String(grp).trim());
-//     pIdx++;
-//   }
-
 //   const whereClause = conditions.join(" AND ");
-
-//   // Parent rows — grouped by canonical drug name
-//   const drugsRes = await pool.query(
-//     `
-//     ${NDC_NAME_CTE}
-//     SELECT
-//       ${CLEAN_DRUG}                                              AS drug_name,
-//       MAX(brand)                                                 AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))          AS rx_count,
-//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)               AS avg_qty_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(COUNT(*), 0)                                    AS avg_ins_paid_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(SUM(quantity), 0)                               AS avg_ins_paid_per_unit
-//     FROM inventory_rows
-//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
-//     INNER JOIN ndc_name nn ON nn.ndc_norm = ${NDC_NORM("inventory_rows.ndc")}
-//     WHERE ${whereClause}
-//     GROUP BY ${CLEAN_DRUG}
-//     ORDER BY rx_count DESC
-//     `,
-//     params,
-//   );
-
-//   // Child rows — one per normalized NDC. NDC never appears twice.
-//   const ndcRes = await pool.query(
-//     `
-//     ${NDC_NAME_CTE}
-//     SELECT
-//       MAX(${CLEAN_DRUG})                                              AS drug_name,
-//       COALESCE(
-//         MAX(nn.ns_ndc),
-//         LPAD(REGEXP_REPLACE(MAX(inventory_rows.ndc), '[^0-9]', '', 'g'), 11, '0')
-//       )                                                               AS ndc,
-//       MAX(brand)                                                      AS brand,
-//       COUNT(DISTINCT (a.user_id,rx_number,date_filled))               AS rx_count,
-//       SUM(quantity)::numeric / NULLIF(COUNT(*), 0)                    AS avg_qty_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(COUNT(*), 0)                                         AS avg_ins_paid_per_rx,
-//       SUM(COALESCE(primary_paid,0) + COALESCE(secondary_paid,0))
-//         / NULLIF(SUM(quantity), 0)                                    AS avg_ins_paid_per_unit
-//     FROM inventory_rows
-//     INNER JOIN audits a ON a.id = inventory_rows.audit_id
-//     INNER JOIN ndc_name nn ON nn.ndc_norm = ${NDC_NORM("inventory_rows.ndc")}
-//     WHERE ${whereClause}
-//     GROUP BY ${NDC_NORM("inventory_rows.ndc")}
-//     ORDER BY drug_name, rx_count DESC
-//     `,
-//     params,
-//   );
-
-//   const byDrug = new Map();
-//   for (const d of drugsRes.rows) byDrug.set(d.drug_name, { ...d, ndcs: [] });
-//   for (const n of ndcRes.rows) {
-//     if (byDrug.has(n.drug_name)) byDrug.get(n.drug_name).ndcs.push(n);
-//   }
-
-//   // For the title on the results page, prefer the actual drug name when in NDC mode
-//   const displayHeader = ndc
-//     ? drugsRes.rows[0]?.drug_name || String(ndc)
-//     : String(ingredient || "").toUpperCase();
-
-//   return {
-//     ingredient: displayHeader,
-//     filters: {
-//       bin: bin || null,
-//       pcn: pcn || null,
-//       grp: grp || null,
-//       ndc: ndc || null,
-//     },
-//     drugs: Array.from(byDrug.values()),
-//   };
-// };
 
 // ── Log a submitted search (fire-and-forget, with quality filters) ──
 
@@ -1996,10 +1429,6 @@ export const logDrugSearch = async (query) => {
     // Only keep the FIRST word (the ingredient) — drops "ELIQUIS 5MG TAB" → "ELIQUIS"
     const firstWord = raw.split(/\s+/)[0];
 
-    // Reject garbage:
-    //  - too short (< 3 chars)
-    //  - contains digits or punctuation other than hyphen (rejects "E;i", "5mg")
-    //  - starts with digit
     if (firstWord.length < 5) return;
     if (!/^[A-Za-z][A-Za-z-]+$/.test(firstWord)) return;
 
@@ -2097,101 +1526,10 @@ export const searchNdcSuggestions = async (query, limit = 8) => {
   }
 };
 
-// export const searchNdcSuggestions = async (query, limit = 8) => {
-//   const q = String(query ?? "").trim();
-//   if (q.length < 2) return [];
-
 //   const numericOnly = q.replace(/\D/g, "");
 //   const ndcPattern = numericOnly.length >= 3 ? `%${numericOnly}%` : null;
 
-//   try {
-//     const result = await pool.query(
-//       `
-//       SELECT
-//         inventory_rows.ndc                                        AS ndc,
-//         MAX(COALESCE(ns.drug_name, inventory_rows.drug_name))     AS drug_name,
-//         MAX(brand)                                                AS brand,
-//         MAX(package_size)                                         AS package_size,
-//         COUNT(*)                                                  AS rx_count
-//       FROM inventory_rows
-//       LEFT JOIN ndc_sheet ns
-//   ON RIGHT(LPAD(REGEXP_REPLACE(ns.ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
-//    = RIGHT(LPAD(REGEXP_REPLACE(inventory_rows.ndc, '[^0-9]', '', 'g'), 11, '0'), 10)
-//       WHERE inventory_rows.ndc IS NOT NULL
-//         AND TRIM(inventory_rows.ndc) <> ''
-//         AND (
-//           COALESCE(ns.drug_name, inventory_rows.drug_name) ILIKE $1
-//           OR ($2::text IS NOT NULL AND REGEXP_REPLACE(inventory_rows.ndc, '[^0-9]', '', 'g') ILIKE $2)
-//         )
-//       GROUP BY inventory_rows.ndc
-//       ORDER BY rx_count DESC
-//       LIMIT $3
-//       `,
-//       [`%${q}%`, ndcPattern, limit],
-//     );
-
-//     return result.rows.map((r) => ({
-//       ndc: r.ndc,
-//       drug_name: r.drug_name,
-//       brand: r.brand || null,
-//       package_size: r.package_size || null,
-//       rx_count: Number(r.rx_count),
-//     }));
-//   } catch (err) {
-//     // Log only safe scalar fields — never `err` itself (pg attaches the socket)
-//     const msg = String(err?.message || "").slice(0, 300);
-//     const code = err?.code || "";
-//     console.error(
-//       "searchNdcSuggestions SQL error | code:",
-//       code,
-//       "| msg:",
-//       msg,
-//     );
-//     throw new Error(msg || "NDC suggestion query failed");
-//   }
-// };
-
-// export const searchNdcAutocomplete = async (query, limit = 10) => {
-//   const numericOnly = String(query ?? "").replace(/\D/g, "");
-//   if (numericOnly.length < 2) return [];
-
 //   const CLEAN_DRUG = `TRIM(REGEXP_REPLACE(drug_name, '\\s*\\(\\d{5}-\\d{4}-\\d{2}\\)\\s*$', ''))`;
-
-//   try {
-//     const result = await pool.query(
-//       `
-//       SELECT
-//         ndc,
-//         MAX(${CLEAN_DRUG}) AS drug_name,
-//         COUNT(*)           AS rx_count
-//       FROM inventory_rows
-//       WHERE ndc IS NOT NULL
-//         AND TRIM(ndc) <> ''
-//         AND REGEXP_REPLACE(ndc, '[^0-9]', '', 'g') ILIKE $1 || '%'
-//       GROUP BY ndc
-//       ORDER BY rx_count DESC
-//       LIMIT $2
-//       `,
-//       [numericOnly, limit],
-//     );
-
-//     return result.rows.map((r) => ({
-//       name: r.drug_name,
-//       ndc: r.ndc,
-//       rx_count: Number(r.rx_count),
-//     }));
-//   } catch (err) {
-//     const msg = String(err?.message || "").slice(0, 300);
-//     const code = err?.code || "";
-//     console.error(
-//       "searchNdcAutocomplete SQL error | code:",
-//       code,
-//       "| msg:",
-//       msg,
-//     );
-//     throw new Error(msg || "NDC autocomplete query failed");
-//   }
-// };
 
 export const searchNdcAutocomplete = async (query, limit = 10) => {
   const numericOnly = String(query ?? "").replace(/\D/g, "");

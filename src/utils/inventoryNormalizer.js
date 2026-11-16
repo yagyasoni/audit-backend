@@ -1,5 +1,6 @@
 import fs from "fs";
 import { parse } from "csv-parse/sync";
+import { UploadRefused } from "./uploadRefused.js";
 
 // Maps frontend key -> DB column name
 const FRONT_TO_DB = {
@@ -61,13 +62,13 @@ export function readInventoryCSV(inputPath, headerMapping = {}) {
     });
   } catch (err) {
     // For example a field that starts with a quote that is never closed.
-    throw new Error(
+    throw new UploadRefused(
       `The file could not be read as a CSV (${err.message}). Nothing was changed. Please fix the file and upload it again.`,
     );
   }
 
   if (records.length === 0) {
-    throw new Error("The file is empty. Please upload a CSV with a header row.");
+    throw new UploadRefused("The file is empty. Please upload a CSV with a header row.");
   }
 
   const headers = records[0].record.map((h) => String(h ?? "").trim());
@@ -90,7 +91,7 @@ export function readInventoryCSV(inputPath, headerMapping = {}) {
     }
 
     if (typeof selectedHeader !== "string") {
-      throw new Error(
+      throw new UploadRefused(
         `The column chosen for "${frontKey}" is not valid. Please map the columns again.`,
       );
     }
@@ -125,7 +126,8 @@ export function readInventoryCSV(inputPath, headerMapping = {}) {
 
     totalRows += 1;
 
-    const dbRow = {};
+    // _line: where the row ends in the file (used in messages to the user)
+    const dbRow = { _line: info.lines };
     for (const { dbKey, index } of columns) {
       const value = index === -1 ? "" : String(record[index] ?? "").trim();
       dbRow[dbKey] = value === "" ? null : value;

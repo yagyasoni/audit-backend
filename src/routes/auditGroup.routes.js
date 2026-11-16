@@ -128,6 +128,15 @@ router.post("/invite", async (req, res) => {
       });
     }
 
+    // Refuse invites for deleted / non-existent groups
+    const groupExists = await pool.query(
+      `SELECT id FROM audit_share_groups WHERE id = $1`,
+      [group_id],
+    );
+    if (groupExists.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Group not found" });
+    }
+
     // Only an admin of this group may invite (the page shows the Invite
     // button to group admins only).
     if ((await groupRole(group_id, invited_by)) !== "admin") {
@@ -247,7 +256,7 @@ router.post("/invite", async (req, res) => {
     accepted_at = NULL
   RETURNING *
   `,
-      [crypto.randomUUID(), group_id, invited_by, invitedUser.id, email],
+      [crypto.randomUUID(), group_id, invited_by, invitedUser.id, email.toLowerCase()],
     );
 
     //
@@ -365,7 +374,7 @@ router.post("/invite", async (req, res) => {
 
         <!-- CTA -->
         <div style="text-align:center; margin:24px 0;">
-          
+          <a
             href="https://www.auditprorx.com/group-reports"
             style="display:inline-block; background:#0f172a; color:#ffffff; text-decoration:none; padding:12px 28px; border-radius:8px; font-size:14px; font-weight:600;"
           >
@@ -520,6 +529,42 @@ router.post("/invite/accept", async (req, res) => {
       success: false,
       message: "Failed to accept invite",
     });
+  }
+});
+
+//
+// ============================================================
+// DECLINE INVITE  (L23)
+// POST /api/audit-share-groups/invite/decline
+// ============================================================
+//
+
+router.post("/invite/decline", async (req, res) => {
+  try {
+    const { invite_id } = req.body;
+    // Only the invited account itself can decline (user from the login).
+    const user_id = actingUserId(req);
+
+    if (!invite_id) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const result = await pool.query(
+      `UPDATE audit_share_group_invites
+          SET status = 'declined'
+        WHERE id = $1 AND invited_user_id = $2 AND status = 'pending'
+        RETURNING id`,
+      [invite_id, user_id],
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Invite not found or already processed" });
+    }
+
+    res.json({ success: true, message: "Invite declined" });
+  } catch (err) {
+    console.error("Decline invite error:", err);
+    res.status(500).json({ success: false, message: "Failed to decline invite" });
   }
 });
 
@@ -742,14 +787,19 @@ router.delete("/:groupId/member/:memberUserId", async (req, res) => {
     // REMOVE MEMBER
     //
 
-    await pool.query(
+    const removeResult = await pool.query(
       `
       DELETE FROM audit_share_group_users
       WHERE group_id = $1
       AND user_id = $2
+      RETURNING id
       `,
       [groupId, memberUserId],
     );
+
+    if (removeResult.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Member not found in group" });
+    }
 
     res.json({
       success: true,

@@ -98,22 +98,41 @@ export function requirePlan(accessKey) {
 // ── ADMIN-ONLY ───────────────────────────────────────────────
 // Use on any admin-only route.
 // Success → req.admin = { userId, role: "admin" }
-export function requireAdmin(req, res, next) {
+export async function requireAdmin(req, res, next) {
   const token = getBearerToken(req);
   if (!token)
     return res.status(401).json({ message: "Authorization token missing" });
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
-    if (decoded.role !== "admin")
-      return res.status(403).json({ message: "Admin access only" });
-    req.admin = decoded;
-    next();
+    decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
   } catch (err) {
     if (err.name === "TokenExpiredError")
       return res.status(401).json({ message: "Admin token expired" });
     return res.status(401).json({ message: "Invalid or expired admin token" });
   }
+
+  if (decoded.role !== "admin")
+    return res.status(403).json({ message: "Admin access only" });
+
+  // Re-check the database, so an admin who was removed or is no longer an
+  // admin is refused at once, not when the token runs out. A database
+  // failure here is a server error, not "your login is invalid": answering
+  // 401 would log a working admin out.
+  let rows;
+  try {
+    ({ rows } = await pool.query(`SELECT role FROM users WHERE id = $1`, [
+      decoded.userId,
+    ]));
+  } catch (err) {
+    console.error("Admin check error:", err);
+    return res.status(500).json({ message: "Failed to check admin access" });
+  }
+  if (!rows.length || rows[0].role !== "admin")
+    return res.status(403).json({ message: "Admin access revoked" });
+
+  req.admin = decoded;
+  next();
 }
 
 // ── EITHER SIDE ──────────────────────────────────────────────
@@ -127,11 +146,11 @@ export function requireAnyAuth(req, res, next) {
   if (!token)
     return res.status(401).json({ message: "Authorization token missing" });
 
-  // 1) Try as a client token
+  // 1) Try as a client token — role is always "user" regardless of token payload
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
-    req.role = decoded.role || "user";
+    req.role = "user";
     return next();
   } catch (_) {
     // not a client token — fall through
