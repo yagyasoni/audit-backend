@@ -40,8 +40,118 @@ export const createAudit = async (name, userId) => {
      RETURNING *`,
     [name, userId],
   );
+  const audit = result.rows[0];
 
-  return result.rows[0];
+  // The new report starts with a copy of the account's supplier list. From
+  // here on the report's list is its own: changing it does not change the
+  // account's list or any other report. A failure here must not stop the
+  // report from being created (its list is then simply empty).
+  try {
+    await pool.query(
+      `INSERT INTO audit_suppliers (audit_id, supplier_name)
+       SELECT $1::uuid, s.name
+         FROM user_suppliers us
+         JOIN suppliers s ON s.id = us.supplier_id
+        WHERE us.user_id = $2::uuid
+       ON CONFLICT DO NOTHING`,
+      [audit.id, userId],
+    );
+  } catch (err) {
+    console.error(
+      "Copying the supplier list to the new report failed:",
+      err.message,
+    );
+  }
+
+  return audit;
+};
+
+// ── A report's own supplier list (audit_suppliers) ───────────
+// The suppliers picked for ONE report. An older report keeps showing its
+// own suppliers whatever the account's list says later. A supplier with an
+// uploaded file always counts as picked, even if its row is missing here.
+
+// The report's supplier names, A–Z.
+export const getAuditSuppliers = async (auditId) => {
+  const result = await pool.query(
+    `SELECT name FROM (
+       SELECT supplier_name AS name
+         FROM audit_suppliers
+        WHERE audit_id = $1
+       UNION
+       SELECT wholesaler_name
+         FROM wholesaler_files
+        WHERE audit_id = $1
+          AND wholesaler_name IS NOT NULL
+          AND wholesaler_name <> ''
+     ) picked
+     ORDER BY LOWER(name), name`,
+    [auditId],
+  );
+  return result.rows.map((row) => row.name);
+};
+
+// Replaces the report's list with `names`. Kept: names on the master
+// supplier list, and names that already have a file on this report.
+export const saveAuditSuppliers = async (auditId, names) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM audit_suppliers WHERE audit_id = $1`, [
+      auditId,
+    ]);
+    if (names.length > 0) {
+      await client.query(
+        `INSERT INTO audit_suppliers (audit_id, supplier_name)
+         SELECT $1::uuid, n
+           FROM unnest($2::text[]) AS n
+          WHERE EXISTS (SELECT 1 FROM suppliers s WHERE s.name = n)
+             OR EXISTS (SELECT 1 FROM wholesaler_files f
+                         WHERE f.audit_id = $1::uuid
+                           AND f.wholesaler_name = n)
+         ON CONFLICT DO NOTHING`,
+        [auditId, names],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+  return getAuditSuppliers(auditId);
+};
+
+// Adds names to a report's list. Never throws: a supplier with a file is
+// shown anyway, so a failure here must not fail an upload.
+export const addAuditSuppliersQuietly = async (auditId, names) => {
+  const clean = names.filter((n) => typeof n === "string" && n.trim() !== "");
+  if (clean.length === 0) return;
+  try {
+    await pool.query(
+      `INSERT INTO audit_suppliers (audit_id, supplier_name)
+       SELECT $1::uuid, n
+         FROM unnest($2::text[]) AS n
+       ON CONFLICT DO NOTHING`,
+      [auditId, clean],
+    );
+  } catch (err) {
+    console.error("Saving the report's supplier list failed:", err.message);
+  }
+};
+
+// Takes one supplier off a report's list. Never throws: its file is already
+// deleted by then, and that must not be reported as a failure.
+export const removeAuditSupplierQuietly = async (auditId, name) => {
+  try {
+    await pool.query(
+      `DELETE FROM audit_suppliers WHERE audit_id = $1 AND supplier_name = $2`,
+      [auditId, name],
+    );
+  } catch (err) {
+    console.error("Updating the report's supplier list failed:", err.message);
+  }
 };
 
 const FRONT_TO_DB_KEY = {
@@ -752,6 +862,9 @@ export const saveWholesalerFiles = async (auditId, filesArray) => {
       removeFileQuietly(path.join(uploadDir, oldName));
     }
   }
+
+  // Every supplier that now has a file is on the report's own list.
+  await addAuditSuppliersQuietly(auditId, [...clearedWholesalers]);
 
   await refreshAuditStatus(auditId);
 

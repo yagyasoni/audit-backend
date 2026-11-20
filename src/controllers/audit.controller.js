@@ -843,6 +843,58 @@ export const getWholesalerFiles = async (req, res) => {
   }
 };
 
+// ── A report's own supplier list ────────────────────────────────────────────
+// The suppliers picked for ONE report (see audit_suppliers in the service).
+//   GET /api/audits/:id/suppliers  → { suppliers: ["AXIA", "KINRAY", ...] }
+//   PUT /api/audits/:id/suppliers  body { supplierNames: [...] } → same reply
+// Saving replaces this report's list only. The account's own supplier list
+// and every other report stay as they are.
+
+const MAX_REPORT_SUPPLIERS = 500;
+const MAX_SUPPLIER_NAME_LENGTH = 255;
+
+export const getReportSuppliers = async (req, res) => {
+  try {
+    const suppliers = await auditService.getAuditSuppliers(req.params.id);
+    res.json({ suppliers });
+  } catch (err) {
+    console.error("Get report suppliers error:", err);
+    res.status(500).json({ error: "Could not load this report's suppliers" });
+  }
+};
+
+export const saveReportSuppliers = async (req, res) => {
+  const supplierNames = req.body?.supplierNames;
+  if (
+    !Array.isArray(supplierNames) ||
+    supplierNames.length > MAX_REPORT_SUPPLIERS
+  ) {
+    return res
+      .status(400)
+      .json({ message: "supplierNames must be a list of supplier names" });
+  }
+
+  // Trimmed, no blanks, no repeats.
+  const names = [
+    ...new Set(
+      supplierNames
+        .map((n) => (typeof n === "string" ? n.trim() : ""))
+        .filter((n) => n !== "" && n.length <= MAX_SUPPLIER_NAME_LENGTH),
+    ),
+  ];
+
+  try {
+    const suppliers = await auditService.saveAuditSuppliers(
+      req.params.id,
+      names,
+    );
+    res.json({ suppliers });
+  } catch (err) {
+    console.error("Save report suppliers error:", err);
+    res.status(500).json({ error: "Could not save this report's suppliers" });
+  }
+};
+
 // ── Serving stored upload CSVs back to the client ──────────────────────────
 // The originals are kept on disk by multer (uploads/inventory, uploads/wholesalers)
 // and the DB holds the exact basename, so Preview/Download serve the real file
@@ -1128,6 +1180,8 @@ export const deleteWholesalerFile = async (req, res) => {
     }
 
     await client.query("COMMIT");
+    // The supplier also comes off this report's own list (this report only).
+    await auditService.removeAuditSupplierQuietly(id, name);
     // The report may no longer be complete without this wholesaler's file.
     await auditService.refreshAuditStatus(id);
     res.json({ success: true, deleted: existingFiles.rows.length });

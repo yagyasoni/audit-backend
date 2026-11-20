@@ -29,6 +29,8 @@ import {
   deleteWholesalerFile,
    serveInventoryFile,
   serveWholesalerFile,
+  getReportSuppliers,
+  saveReportSuppliers,
 } from "../controllers/audit.controller.js";
 
 const router = express.Router();
@@ -135,6 +137,10 @@ router.get("/:id/aberrant-summary", ownReports, getAberrantRiskSummary);
 
 router.get("/:id/inventory-files", ownReports, getInventoryFiles);
 router.get("/:id/wholesaler-files", ownReports, getWholesalerFiles);
+// The report's own supplier list: the suppliers picked for it, with or
+// without an uploaded file. Saving changes this report only.
+router.get("/:id/suppliers", ownReports, getReportSuppliers);
+router.put("/:id/suppliers", ownReports, saveReportSuppliers);
 
 // Serve a stored upload back: ?mode=preview → JSON rows, otherwise a CSV download.
 // Keyed by audit id / wholesaler name rather than a file row id, because a
